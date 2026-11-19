@@ -1,0 +1,735 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Fleet Desk</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: status strip, three tabs, availability timeline (cars down, days across) as the main view */
+:root{
+  --f-display:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-body:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --bg:#F1F5F5; --surface:#FFFFFF; --ink:#10252A; --muted:#566C72;
+  --line:#D6DFE1; --line-soft:#E7EDEE;
+  --accent:#0B7A75; --accent-ink:#FFFFFF; --accent-soft:#D8EEEB;
+  --ok:#1B7F46; --ok-soft:#DCF1E3;
+  --warn:#8F5A00; --warn-soft:#FBEBC9; --warn-line:#D9A441;
+  --crit:#B3321F; --crit-soft:#FBE0DB;
+  --weekend:#EDF2F3; --today:#FFF3CB; --plate-bg:#FBE98E; --overlay:rgba(8,20,22,.55);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D191C; --surface:#142327; --ink:#E5EEF0; --muted:#93A9AF;
+    --line:#26393E; --line-soft:#1D2D31;
+    --accent:#3FC5BB; --accent-ink:#04211F; --accent-soft:#17393A;
+    --ok:#5FCB8A; --ok-soft:#173A27;
+    --warn:#F0BE62; --warn-soft:#3A2E12; --warn-line:#8A6A24;
+    --crit:#FF8C7A; --crit-soft:#432019;
+    --weekend:#112024; --today:#3A3418; --plate-bg:#4A3F12; --overlay:rgba(0,0,0,.65);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D191C; --surface:#142327; --ink:#E5EEF0; --muted:#93A9AF;
+  --line:#26393E; --line-soft:#1D2D31;
+  --accent:#3FC5BB; --accent-ink:#04211F; --accent-soft:#17393A;
+  --ok:#5FCB8A; --ok-soft:#173A27;
+  --warn:#F0BE62; --warn-soft:#3A2E12; --warn-line:#8A6A24;
+  --crit:#FF8C7A; --crit-soft:#432019;
+  --weekend:#112024; --today:#3A3418; --plate-bg:#4A3F12; --overlay:rgba(0,0,0,.65);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45;
+  padding-block:20px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1240px;margin:0 auto}
+h1,h2,h3{font-family:var(--f-display);margin:0;letter-spacing:-.01em}
+h1{font-size:28px;font-weight:700;line-height:1.1}
+h2{font-size:18px;font-weight:600}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
+.top .date{color:var(--muted);margin-top:4px}
+.btn{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--crit)}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.note{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:9px 12px;margin-top:14px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);margin:18px 0 6px;border-block:1px solid var(--line)}
+.stat{padding:12px 0 12px 16px;border-left:1px solid var(--line);min-width:0}
+.stat:first-child{border-left:0;padding-left:0}
+button.stat{background:none;border-top:0;border-right:0;border-bottom:0;font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
+button.stat:hover b{text-decoration:underline}
+button.stat:focus-visible{outline:2px solid var(--accent,currentColor);outline-offset:2px}
+.stat em{font-style:normal;color:var(--muted);font-size:11px}
+.tl-item{display:grid;gap:2px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
+.tl-item:last-child{border-bottom:0}
+.tl-top{display:flex;gap:10px;align-items:baseline;justify-content:space-between}
+.tl-time{font:600 15px/1.2 var(--f-display);font-variant-numeric:tabular-nums}
+.stat span{display:block;color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.stat b{display:block;font:600 30px/1.15 var(--f-display);font-variant-numeric:tabular-nums}
+.stat i{font-style:normal;color:var(--muted);font-size:12px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:14px 0 16px;overflow-x:auto}
+.tab{background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:10px 14px;color:var(--muted);font-weight:500;cursor:pointer;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.bar-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.bar-row .sp{flex:1}
+.seg{display:inline-flex;gap:0}
+.seg .btn{border-radius:0;margin-left:-1px}
+.seg .btn:first-child{border-radius:8px 0 0 8px;margin-left:0}
+.seg .btn:last-child{border-radius:0 8px 8px 0}
+.inl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-weight:500}
+.inl input,.inl select{width:auto}
+input,select,textarea{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.range{font:600 15px var(--f-display);margin-bottom:8px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;color:var(--muted);font-size:12px;margin:10px 0 0}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:18px;height:10px;border-radius:3px;display:inline-block}
+.sw.rent{background:var(--accent)}
+.sw.maint{background:repeating-linear-gradient(135deg,var(--warn-soft) 0 4px,var(--warn-line) 4px 8px);border:1px solid var(--warn-line)}
+.sw.td{background:var(--today);border:1px solid var(--line)}
+.tl-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.tl{--cw:46px;--vw:156px;min-width:max-content}
+.tl-r{display:flex;border-bottom:1px solid var(--line-soft)}
+.tl-r:last-child{border-bottom:0}
+.tl-veh{flex:0 0 var(--vw);width:var(--vw);position:sticky;left:0;z-index:4;background:var(--surface);border-right:1px solid var(--line);padding:8px 10px;display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0}
+.vn{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lab{color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+.plate{align-self:flex-start;font:600 11px var(--f-display);letter-spacing:.09em;padding:1px 6px;border:1.5px solid var(--ink);border-radius:4px;background:var(--plate-bg);color:var(--ink)}
+.tl-track{display:grid;grid-template-columns:repeat(var(--cols),var(--cw));grid-auto-rows:54px}
+.tl-r.hd .tl-track,.tl-r.ft .tl-track{grid-auto-rows:auto}
+.cell{grid-row:1;border:0;border-left:1px solid var(--line-soft);background:transparent;padding:0;cursor:pointer;height:54px}
+.cell.we,.dh.we,.fc.we{background:var(--weekend)}
+.cell.td,.dh.td,.fc.td{background:var(--today)}
+button.cell:hover{background:var(--accent-soft)}
+div.cell{cursor:default}
+.dh{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;height:58px;border-left:1px solid var(--line-soft);font-size:11px;color:var(--muted)}
+.dh b{font:600 16px/1 var(--f-display);color:var(--ink)}
+.dh.td b{color:var(--accent)}
+.dh .mon{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;height:12px;color:var(--accent)}
+.fc{display:flex;align-items:center;justify-content:center;height:36px;border-left:1px solid var(--line-soft);font:600 13px var(--f-display);font-variant-numeric:tabular-nums}
+.fc.zero{color:var(--crit)}
+.tl-r.ft{background:var(--bg)}
+.tl-r.ft .tl-veh{background:var(--bg)}
+.bar{grid-row:1;z-index:2;margin:9px 2px;border:0;border-radius:6px;padding:0 8px;background:var(--vc,var(--accent));color:var(--vi,var(--accent-ink));font-size:12px;font-weight:500;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.bar.past{opacity:.5}
+.bar.maint{background:repeating-linear-gradient(135deg,var(--warn-soft) 0 8px,color-mix(in srgb,var(--warn-line) 45%,var(--warn-soft)) 8px 16px);color:var(--warn);border:1px solid var(--warn-line)}
+.bar.cl{margin-left:0;border-top-left-radius:0;border-bottom-left-radius:0}
+.bar.cr{margin-right:0;border-top-right-radius:0;border-bottom-right-radius:0}
+.bar.hs{margin-left:calc(var(--cw)/2)}
+.bar.he{margin-right:calc(var(--cw)/2)}
+.tl-veh[data-action]{border-left:5px solid var(--vc,transparent)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--vc,var(--accent));margin-right:7px;flex:none;box-shadow:0 0 0 1px var(--line)}
+.vhead .dot{width:14px;height:14px}
+.form .fl{font-size:12px;color:var(--muted);font-weight:500}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.swb{width:30px;height:30px;border-radius:50%;border:2px solid var(--surface);background:var(--vc);box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
+.swb.on{box-shadow:0 0 0 2px var(--ink)}
+div.bar{cursor:default}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:18px}
+.panel h2{margin-bottom:12px}
+.fin-form{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:6px}
+.fin-form label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:500}
+.list{border-top:1px solid var(--line-soft);margin-top:12px}
+.row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.3fr) auto auto;gap:12px;align-items:center;padding:12px 2px;border-bottom:1px solid var(--line-soft)}
+.row:last-child{border-bottom:0}
+.row .main{min-width:0;display:grid;gap:3px}
+.row .main strong{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.row .sub{color:var(--muted);font-size:13px}
+.row .num{font:600 15px var(--f-display);font-variant-numeric:tabular-nums;text-align:right}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.free{background:var(--ok-soft);color:var(--ok)}
+.pill.rent{background:var(--accent-soft);color:var(--accent)}
+.pill.maint{background:var(--warn-soft);color:var(--warn)}
+.pill.up{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
+.pill.past{background:var(--bg);color:var(--muted)}
+.empty{text-align:center;padding:44px 16px;border:1px dashed var(--line);border-radius:10px;background:var(--surface)}
+.empty h2{margin-bottom:6px}
+.empty p{color:var(--muted);margin:0 0 16px}
+.bad{color:var(--crit)}
+.ov{position:fixed;inset:0;z-index:50;background:var(--overlay);display:flex;align-items:center;justify-content:center;
+  padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.modal{background:var(--surface);border:1px solid var(--line);border-radius:12px;width:100%;max-width:480px;max-height:100%;overflow:auto;padding:20px}
+.modal h2{margin-bottom:14px}
+.form{display:grid;gap:12px;margin-top:14px}
+.form label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:500}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.meta{font-size:13px;min-height:20px}
+.seg2{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg2 button{background:var(--surface);border:0;padding:8px;font-weight:500;cursor:pointer}
+.seg2 button.on{background:var(--accent);color:var(--accent-ink)}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;align-items:center}
+.actions .sp{flex:1}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;z-index:60;max-width:calc(100% - 32px)}
+.tl-veh[data-action]{cursor:pointer}
+.tl-veh[data-action]:hover{background:var(--accent-soft)}
+.vlink{background:none;border:0;padding:0;text-align:left;cursor:pointer;font:inherit;color:inherit;font-weight:600}
+.vlink:hover{color:var(--accent);text-decoration:underline}
+.row .main[data-action]{cursor:pointer}
+.vhead{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:14px}
+.vhead h2{font-size:24px;margin:8px 0 6px}
+.vhead .facts{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;color:var(--muted)}
+.mgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.mh{padding:8px 4px;text-align:center;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);background:var(--bg);border-bottom:1px solid var(--line)}
+.md{min-width:0;min-height:80px;border:0;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);padding:6px 0;display:flex;flex-direction:column;justify-content:space-between;gap:6px;background:transparent;text-align:left;cursor:pointer}
+.md:nth-child(7n){border-right:0}
+div.md{cursor:default}
+.md.we{background:var(--weekend)}
+.md.td{background:var(--today)}
+.md.out{opacity:.45}
+button.md:hover{background:var(--accent-soft)}
+.md .dn{font:600 13px var(--f-display);padding-left:8px}
+.md.td .dn{color:var(--accent)}
+.chip{display:block;margin:0 4px;height:22px;line-height:22px;border-radius:4px;padding:0 6px;font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--vc,var(--accent));color:var(--vi,var(--accent-ink))}
+.chip.maint{background:repeating-linear-gradient(135deg,var(--warn-soft) 0 8px,color-mix(in srgb,var(--warn-line) 45%,var(--warn-soft)) 8px 16px);color:var(--warn);border:1px solid var(--warn-line);line-height:20px}
+.chip.past{opacity:.5}
+.chip.cl{margin-left:0;border-top-left-radius:0;border-bottom-left-radius:0}
+.chip.cr{margin-right:0;border-top-right-radius:0;border-bottom-right-radius:0}
+@media (max-width:640px){
+  .md{min-height:64px}
+  .chip{font-size:10px;padding:0 3px}
+  .vhead h2{font-size:21px}
+  h1{font-size:24px}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .stat:nth-child(odd){border-left:0;padding-left:0}
+  .stat:nth-child(n+3){border-top:1px solid var(--line)}
+  .tl{--vw:118px;--cw:44px}
+  .row{grid-template-columns:minmax(0,1fr) auto}
+  .row .c2{grid-column:1/-1;grid-row:2}
+  .row .num{text-align:left}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Fleet Desk</h1>
+      <div class="date" id="today-label"></div>
+    </div>
+    <div id="top-actions"></div>
+  </div>
+  <div id="banner"></div>
+  <div class="stats" id="stats"></div>
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div id="main"></div>
+</div>
+<div id="ov" class="ov" hidden></div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+const firebaseConfig = {
+ apiKey: "AIzaSyDYfhziyUtTCYZOcL0G-COuzO4zW0gqHzw",
+ authDomain: "mr-ts-fleet-desk.firebaseapp.com",
+ projectId: "mr-ts-fleet-desk",
+ storageBucket: "mr-ts-fleet-desk.firebasestorage.app",
+ messagingSenderId: "886896565342",
+ appId: "1:886896565342:web:e5e4ed77b75f43df9a28cf",
+ measurementId: "G-Z91LJ2SBFQ"
+};
+firebase.initializeApp(firebaseConfig);
+</script>
+<style>
+#loginGate{position:fixed;inset:0;z-index:9999;background:#f5f7fb;display:flex;align-items:center;justify-content:center;padding:20px;color:#172438}
+#loginGate[hidden]{display:none}#loginGate form{background:white;padding:28px;border-radius:18px;box-shadow:0 12px 45px #12213b22;width:min(400px,100%);display:grid;gap:14px}
+#loginGate input{padding:13px;border:1px solid #bbc6d3;border-radius:9px;font:inherit;width:100%}#loginGate button{padding:13px;border:0;border-radius:9px;background:#175cd3;color:white;font-weight:bold;font:inherit}
+#loginError{color:#b42318;font-size:14px;min-height:18px}
+#signOut{position:fixed;right:14px;bottom:14px;z-index:99;background:#fff;border:1px solid #ccd5e1;border-radius:10px;padding:9px 12px;color:#23344d}
+</style>
+<div id="loginGate"><form id="loginForm"><h2>Mr Ts Fleet Desk</h2><p>Sign in to access your fleet and bookings.</p><label>Email<input id="loginEmail" type="email" required autocomplete="username" value="mr.tscarrentals@outlook.com"></label><label>Password<input id="loginPassword" type="password" required autocomplete="current-password"></label><div id="loginError" role="alert"></div><button type="submit">Sign in</button></form></div>
+<button id="signOut" type="button" hidden>Sign out</button>
+<script>
+document.getElementById('loginForm').addEventListener('submit',async function(e){e.preventDefault();const err=document.getElementById('loginError');err.textContent='';try{await firebase.auth().signInWithEmailAndPassword(document.getElementById('loginEmail').value.trim(),document.getElementById('loginPassword').value)}catch(ex){err.textContent='Sign-in failed. Check your email and password.'}});
+document.getElementById('signOut').addEventListener('click',function(){firebase.auth().signOut()});
+</script>
+<script>
+(function(){
+'use strict';
+var $=function(s){return document.querySelector(s)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+var pad=function(n){return String(n).padStart(2,'0')};
+var iso=function(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
+var parse=function(s){var p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2])};
+var addDays=function(s,n){var d=parse(s);d.setDate(d.getDate()+n);return iso(d)};
+var diff=function(a,b){return Math.round((parse(b)-parse(a))/864e5)};
+var today=function(){return iso(new Date())};
+var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var fmtS=function(s){var d=parse(s);return d.getDate()+' '+MON[d.getMonth()]};
+var fmtL=function(s){var d=parse(s);return DOW[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear()};
+var money=function(n){return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0})};
+var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)};
+var CATS=['Compact','Sedan','Jeep','SUV','Large SUV (7-seater)','Pick up'];
+var TABS=[['calendar','Calendar'],['fleet','Fleet'],['bookings','Bookings']];
+
+var S={ready:false,vid:null,month:null,back:'calendar',tab:'calendar',start:today(),span:14,cat:'all',vehicles:[],bookings:[],bf:'all',q:'',
+  readOnly:false,warn:'',modal:null,fin:{start:today(),startTime:'09:00',end:addDays(today(),2),endTime:'09:00',cat:'all'}};
+var db=null,gotV=false,gotB=false;
+var LS='fleetdesk.v1';
+
+function use(n){try{return window.claude&&window.claude.use?Promise.resolve(window.claude.use(n)).catch(function(){return null}):Promise.resolve(null)}catch(e){return Promise.resolve(null)}}
+function toast(m){var t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){t.hidden=true},3200)}
+
+/* ---------- storage ---------- */
+function lsLoad(){try{var o=JSON.parse(localStorage.getItem(LS)||'{}');S.vehicles=o.vehicles||[];S.bookings=o.bookings||[]}catch(e){}}
+function lsSave(){try{localStorage.setItem(LS,JSON.stringify({vehicles:S.vehicles,bookings:S.bookings}))}catch(e){}}
+function save(col,obj){
+  if(db){
+    var data=Object.assign({},obj);delete data.id;
+    return db.collection(col).doc(obj.id).set(data).then(function(){return true},function(e){
+      toast(e&&e.code==='permission-denied'?'Your account does not have permission to save.':'Could not save. Try again.');return false});
+  }
+  var arr=S[col],i=arr.findIndex(function(x){return x.id===obj.id});
+  if(i>=0)arr[i]=obj;else arr.push(obj);
+  lsSave();renderAll();return Promise.resolve(true);
+}
+function remove(col,id){
+  if(db)return db.collection(col).doc(id).delete().then(function(){return true},function(){toast('Could not delete. Try again.');return false});
+  S[col]=S[col].filter(function(x){return x.id!==id});lsSave();renderAll();return Promise.resolve(true);
+}
+
+/* ---------- domain ---------- */
+var byName=function(a,b){return String(a.name).localeCompare(String(b.name))};
+var vById=function(id){return S.vehicles.find(function(v){return v.id===id})};
+var covers=function(b,d){return b.start<=d&&d<=b.end};
+var busyOn=function(vid,d){return S.bookings.find(function(b){return b.vehicleId===vid&&covers(b,d)})};
+var sdt=function(b){return b.start+'T'+(b.startTime||'00:00')};
+var edt=function(b){return b.end+'T'+(b.endTime||'23:59')};
+var busyAll=function(vid,d){return S.bookings.filter(function(b){return b.vehicleId===vid&&covers(b,d)}).sort(function(a,c){return sdt(a)<sdt(c)?-1:1})};
+/* Two bookings clash only when their date and time ranges overlap, so a car can come back in the morning and go out again that afternoon. */
+var conflicts=function(vid,s,e,except,st,et){var ns=s+'T'+(st||'00:00'),ne=e+'T'+(et||'23:59');return S.bookings.filter(function(b){return b.vehicleId===vid&&b.id!==except&&sdt(b)<ne&&ns<edt(b)})};
+var days=function(s,e){return diff(s,e)+1};
+var fmtT=function(t){if(!t)return '';var p=t.split(':'),h=Number(p[0]);return (h%12||12)+':'+p[1]+' '+(h<12?'AM':'PM')};
+var whenS=function(d,t){return fmtS(d)+(t?', '+fmtT(t):'')};
+/* Rentals are counted in 24-hour blocks: 9:00 AM to 9:00 AM two days later is 2 days, and any part of another day counts as one more. */
+var rentalDays=function(b){
+  if(b.startTime&&b.endTime){
+    var a=parse(b.start),z=parse(b.end),sp=b.startTime.split(':'),ep=b.endTime.split(':');
+    a.setHours(Number(sp[0]),Number(sp[1]));z.setHours(Number(ep[0]),Number(ep[1]));
+    return Math.max(1,Math.ceil(Math.round((z-a)/60000)/1440));
+  }
+  return days(b.start,b.end);
+};
+var bTotal=function(b){if(b.total!=null&&b.total!=='')return Number(b.total)||0;return (b.rate||0)*rentalDays(b)};
+/* One colour per car: [key, name, background, text] */
+var PALETTE=[['lightblue','Light blue','#8FD0F5','#0B2A40'],['red','Red','#D93636','#FFFFFF'],['royalblue','Royal blue','#2F54C8','#FFFFFF'],['orange','Orange','#F08A1C','#2B1600'],['green','Green','#2E9E5B','#FFFFFF'],['peach','Peach','#FFB99A','#3A1A0A'],['purple','Purple','#7A3FC1','#FFFFFF'],['darkgrey','Dark grey','#5A676C','#FFFFFF'],['lilac','Lilac','#C9B3F0','#2A1B4D'],['yellow','Yellow','#F5D838','#2B2400'],['burgundy','Burgundy','#7E1F3A','#FFFFFF'],['teal','Teal','#0B7A75','#FFFFFF']];
+var colorOf=function(v){var k=v&&v.color;for(var i=0;i<PALETTE.length;i++){if(PALETTE[i][0]===k)return PALETTE[i]}return PALETTE[PALETTE.length-1]};
+var vcVars=function(v){var c=colorOf(v);return '--vc:'+c[2]+';--vi:'+c[3]};
+var dot=function(v){return '<i class="dot" style="'+vcVars(v)+'"></i>'};
+function nextColor(){var used={};S.vehicles.forEach(function(v){used[v.color]=1});for(var i=0;i<PALETTE.length-1;i++){if(!used[PALETTE[i][0]])return PALETTE[i][0]}return 'teal'}
+function locLine(b){if(b.type==='maintenance')return '';var p=[];if(b.staying)p.push('Staying: '+esc(b.staying));if(b.pickup)p.push('Pick-up: '+esc(b.pickup));if(b.dropoff)p.push('Drop-off: '+esc(b.dropoff));return p.length?'<span class="sub">'+p.join(' · ')+'</span>':''}
+function whenLine(b){var n=rentalDays(b);return whenS(b.start,b.startTime)+' – '+whenS(b.end,b.endTime)+' <span class="sub">· '+n+(n===1?' day':' days')+'</span>'}
+function vStatus(v,d){
+  var b=busyOn(v.id,d);
+  if(b)return {k:b.type==='maintenance'?'maint':'rent',b:b};
+  var next=S.bookings.filter(function(x){return x.vehicleId===v.id&&x.start>d}).sort(function(a,c){return a.start<c.start?-1:1})[0];
+  return {k:'free',next:next};
+}
+function bState(b,t){return b.end<t?'past':(b.start<=t?'active':'up')}
+function statusPill(v){
+  var t=today(),st=vStatus(v,t);
+  if(st.k==='rent')return '<span class="pill rent">On rental · back '+whenS(st.b.end,st.b.endTime)+'</span>';
+  if(st.k==='maint')return '<span class="pill maint">Workshop · until '+whenS(st.b.end,st.b.endTime)+'</span>';
+  return '<span class="pill free">Free'+(st.next?' until '+fmtS(addDays(st.next.start,-1)):'')+'</span>';
+}
+var canWrite=function(){return !S.readOnly};
+
+/* ---------- render ---------- */
+function renderAll(){
+  $('#today-label').textContent=fmtL(today());
+  $('#top-actions').innerHTML=canWrite()?'<button class="btn primary" data-action="new-booking">New booking</button>':'';
+  $('#banner').innerHTML=S.warn?'<div class="note">'+esc(S.warn)+'</div>':'';
+  renderStats();renderTabs();renderMain();
+}
+function renderStats(){
+  var t=today(),n=S.vehicles.length,free=0,rent=0,maint=0;
+  S.vehicles.forEach(function(v){var k=vStatus(v,t).k;if(k==='free')free++;else if(k==='rent')rent++;else maint++});
+  var picks=S.bookings.filter(function(b){return b.type==='rental'&&b.start===t});
+  var rets=S.bookings.filter(function(b){return b.type==='rental'&&b.end===t});
+  var first=function(list,key){if(!list.length)return 'none today';var ts=list.map(function(b){return b[key]||''}).filter(Boolean).sort();return ts.length?'first at '+fmtT(ts[0]):'today'};
+  var items=[[free,'Free today','of '+n+(n===1?' car':' cars')],[rent,'On rental','out right now'],[maint,'In workshop','unavailable'],[picks.length,'Deliveries today',first(picks,'startTime')],[rets.length,'Returns today',first(rets,'endTime')]];
+  var keys={'Deliveries today':'out','Returns today':'in'};
+  $('#stats').innerHTML=items.map(function(i){var k=keys[i[1]];
+    return k?'<button class="stat" data-action="today-list" data-v="'+k+'"><span>'+i[1]+'</span><b>'+i[0]+'</b><i>'+i[2]+'</i></button>'
+      :'<div class="stat"><span>'+i[1]+'</span><b>'+i[0]+'</b><i>'+i[2]+'</i></div>'}).join('');
+}
+function renderTabs(){
+  $('#tabs').innerHTML=TABS.map(function(t){return '<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-action="tab" data-v="'+t[0]+'">'+t[1]+'</button>'}).join('');
+}
+function renderMain(){
+  var sc=$('.tl-scroll'),left=sc?sc.scrollLeft:0;
+  var h=S.tab==='vehicle'?vehicleHTML():S.tab==='fleet'?fleetHTML():S.tab==='bookings'?bookingsHTML():calHTML();
+  $('#main').innerHTML=h;
+  if(S.tab==='bookings')renderBkList();
+  var sc2=$('.tl-scroll');if(sc2)sc2.scrollLeft=left;
+}
+function emptyFleet(){
+  return '<div class="empty"><h2>No cars in the fleet yet</h2><p>Add your vehicles and their daily rates. The calendar then shows which cars are free on every day.</p>'+(canWrite()?'<button class="btn primary" data-action="add-vehicle">Add first vehicle</button>':'')+'</div>';
+}
+function calHTML(){
+  if(!S.vehicles.length)return emptyFleet();
+  var t=today(),vs=S.vehicles.filter(function(v){return S.cat==='all'||v.category===S.cat}).sort(byName);
+  var s=S.start,e=addDays(s,S.span-1),ds=[],i;
+  for(i=0;i<S.span;i++)ds.push(addDays(s,i));
+  var cats=Array.from(new Set(S.vehicles.map(function(v){return v.category}).filter(Boolean))).sort();
+  var ctl='<div class="bar-row"><div class="seg"><button class="btn" data-action="nav" data-n="-7">&larr; Week</button><button class="btn" data-action="today">Today</button><button class="btn" data-action="nav" data-n="7">Week &rarr;</button></div>'+
+    '<label class="inl">Jump to<input type="date" id="c-jump" value="'+s+'"></label>'+
+    '<label class="inl">Show<select id="c-span">'+[7,14,30].map(function(n){return '<option value="'+n+'"'+(n===S.span?' selected':'')+'>'+n+' days</option>'}).join('')+'</select></label>'+
+    '<label class="inl">Type<select id="c-cat"><option value="all">All</option>'+cats.map(function(c){return '<option'+(c===S.cat?' selected':'')+'>'+esc(c)+'</option>'}).join('')+'</select></label></div>';
+  var head='<div class="tl-r hd"><div class="tl-veh"><span class="lab">Vehicle</span></div><div class="tl-track">'+ds.map(function(d,j){
+    var dt=parse(d),w=dt.getDay();
+    return '<div class="dh'+(w%6===0?' we':'')+(d===t?' td':'')+'"><span class="mon">'+(j===0||dt.getDate()===1?MON[dt.getMonth()]:'')+'</span><span>'+DOW[w]+'</span><b>'+dt.getDate()+'</b></div>';
+  }).join('')+'</div></div>';
+  var rows=vs.map(function(v){
+    var cells=ds.map(function(d,j){
+      var w=parse(d).getDay(),cls='cell'+(w%6===0?' we':'')+(d===t?' td':''),st='grid-column:'+(j+1);
+      return canWrite()?'<button class="'+cls+'" style="'+st+'" data-action="cell" data-v="'+v.id+'" data-d="'+d+'" aria-label="Book '+esc(v.name)+' on '+fmtS(d)+'"></button>':'<div class="'+cls+'" style="'+st+'"></div>';
+    }).join('');
+    var bars=S.bookings.filter(function(b){return b.vehicleId===v.id&&b.end>=s&&b.start<=e}).map(function(b){
+      var cs=b.start>s?b.start:s,ce=b.end<e?b.end:e,c1=diff(s,cs)+1,c2=diff(s,ce)+2;
+      var m=b.type==='maintenance',label=m?'Workshop · '+b.customer:b.customer;
+      var hs=S.bookings.some(function(o){return o.id!==b.id&&o.vehicleId===v.id&&o.end===b.start});
+      var he=S.bookings.some(function(o){return o.id!==b.id&&o.vehicleId===v.id&&o.start===b.end});
+      if(b.start===b.end&&hs&&he)he=false;
+      var cls='bar'+(m?' maint':'')+(b.end<t?' past':'')+(b.start<s?' cl':'')+(b.end>e?' cr':'')+(hs&&b.start>=s?' hs':'')+(he&&b.end<=e?' he':'');
+      var tip=label+' ('+whenS(b.start,b.startTime)+' – '+whenS(b.end,b.endTime)+')';
+      var tag=canWrite()?'button':'div';
+      return '<'+tag+' class="'+cls+'" style="grid-column:'+c1+'/'+c2+';'+vcVars(v)+'" data-action="edit-booking" data-id="'+b.id+'" title="'+esc(tip)+'">'+esc(label)+'</'+tag+'>';
+    }).join('');
+    return '<div class="tl-r"><div class="tl-veh" style="'+vcVars(v)+'" data-action="open-vehicle" data-id="'+v.id+'"><button class="vlink vn" data-action="open-vehicle" data-id="'+v.id+'" title="Open calendar for '+esc(v.name)+'">'+esc(v.name)+'</button><span class="plate">'+esc(v.plate)+'</span></div><div class="tl-track">'+cells+bars+'</div></div>';
+  }).join('');
+  var foot='<div class="tl-r ft"><div class="tl-veh"><span class="lab">Cars free</span></div><div class="tl-track">'+ds.map(function(d){
+    var n=vs.filter(function(v){return !busyOn(v.id,d)}).length,w=parse(d).getDay();
+    return '<div class="fc'+(n===0?' zero':'')+(w%6===0?' we':'')+(d===t?' td':'')+'">'+n+'</div>';
+  }).join('')+'</div></div>';
+  var legend='<div class="legend"><span><i class="sw rent"></i>Rental (colour matches the car)</span><span><i class="sw maint"></i>Workshop</span><span><i class="sw td"></i>Today</span>'+(canWrite()?'<span>Tap an empty day to book that car</span>':'')+'</div>';
+  var tl='<div class="range">'+fmtS(s)+' – '+fmtS(e)+' '+parse(e).getFullYear()+'</div>'+
+    (vs.length?'<div class="tl-scroll"><div class="tl" style="--cols:'+S.span+'">'+head+rows+foot+'</div></div>':'<div class="empty"><p>No cars of this type.</p></div>')+legend;
+  return ctl+tl+finderHTML();
+}
+function finderHTML(){
+  var f=S.fin,cats=Array.from(new Set(S.vehicles.map(function(v){return v.category}).filter(Boolean))).sort();
+  return '<div class="panel"><h2>Check availability</h2><div class="fin-form">'+
+    '<label>From date<input type="date" id="fin-start" value="'+f.start+'"></label>'+
+    '<label>From time<input type="time" id="fin-stime" value="'+esc(f.startTime)+'"></label>'+
+    '<label>To date<input type="date" id="fin-end" value="'+f.end+'"></label>'+
+    '<label>To time<input type="time" id="fin-etime" value="'+esc(f.endTime)+'"></label>'+
+    '<label>Type<select id="fin-cat"><option value="all">All</option>'+cats.map(function(c){return '<option'+(c===f.cat?' selected':'')+'>'+esc(c)+'</option>'}).join('')+'</select></label></div>'+
+    finderResults()+'</div>';
+}
+function finderResults(){
+  var f=S.fin;
+  if(!f.start||!f.end||!f.startTime||!f.endTime)return '<p class="bad">Enter both dates and both times.</p>';
+  if(f.end+'T'+f.endTime<=f.start+'T'+f.startTime)return '<p class="bad">The return must be after the pick-up.</p>';
+  var n=rentalDays({start:f.start,end:f.end,startTime:f.startTime,endTime:f.endTime});
+  var list=S.vehicles.filter(function(v){return (f.cat==='all'||v.category===f.cat)&&!conflicts(v.id,f.start,f.end,null,f.startTime,f.endTime).length}).sort(byName);
+  var head='<p class="sub" style="margin:8px 0 0;color:var(--muted)">'+list.length+' of '+S.vehicles.length+' cars free from '+whenS(f.start,f.startTime)+' to '+whenS(f.end,f.endTime)+' · '+n+(n===1?' day':' days')+' at each car\'s daily rate</p>';
+  if(!list.length)return head;
+  return head+'<div class="list">'+list.map(function(v){
+    return '<div class="row"><div class="main"><strong>'+dot(v)+esc(v.name)+'</strong><span><span class="plate">'+esc(v.plate)+'</span> <span class="sub">'+esc([v.category,v.seats?v.seats+' seats':'',v.transmission].filter(Boolean).join(' · '))+'</span></span></div>'+
+      '<div class="c2 sub">'+money(v.rate)+' per day</div><div class="num">'+money((v.rate||0)*n)+'</div>'+
+      (canWrite()?'<button class="btn sm primary" data-action="book-from-finder" data-v="'+v.id+'">Book</button>':'<span></span>')+'</div>';
+  }).join('')+'</div>';
+}
+var FULL=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function monthAdd(m,n){var x=parse(m);return iso(new Date(x.getFullYear(),x.getMonth()+n,1))}
+function vehicleHTML(){
+  if(!S.ready)return '<p style="color:var(--muted)">Loading…</p>';
+  var v=vById(S.vid);
+  if(!v)return '<div class="empty"><h2>Car not found</h2><p>It may have been removed from the fleet.</p><button class="btn" data-action="back">Back</button></div>';
+  if(!S.month)S.month=today().slice(0,8)+'01';
+  var t=today(),first=parse(S.month),mon=first.getMonth(),dim=new Date(first.getFullYear(),mon+1,0).getDate();
+  var off=first.getDay(),weeks=Math.ceil((off+dim)/7),gs=addDays(S.month,-off),k,i;
+  var freeN=0;for(k=0;k<dim;k++){if(!busyOn(v.id,addDays(S.month,k)))freeN++}
+  var head='<div class="vhead"><div><button class="btn sm" data-action="back">&larr; Back</button><h2>'+dot(v)+esc(v.name)+'</h2><div class="facts"><span class="plate">'+esc(v.plate)+'</span><span>'+esc([v.category,v.seats?v.seats+' seats':'',v.transmission].filter(Boolean).join(' · '))+'</span><span>'+money(v.rate)+' per day</span>'+statusPill(v)+'</div></div>'+
+    '<div class="seg">'+(canWrite()?'<button class="btn" data-action="edit-vehicle" data-id="'+v.id+'">Edit car</button><button class="btn primary" data-action="book-car">Book this car</button>':'')+'</div></div>';
+  var ctl='<div class="bar-row"><div class="seg"><button class="btn" data-action="mnav" data-n="-1" aria-label="Previous month">&larr;</button><button class="btn" data-action="mtoday">This month</button><button class="btn" data-action="mnav" data-n="1" aria-label="Next month">&rarr;</button></div>'+
+    '<div class="range" style="margin:0">'+FULL[mon]+' '+first.getFullYear()+'</div><span class="sp"></span><span style="color:var(--muted)">'+freeN+' of '+dim+' days free</span></div>';
+  var grid=DOW.map(function(d){return '<div class="mh">'+d+'</div>'}).join('');
+  for(i=0;i<weeks*7;i++){
+    var d=addDays(gs,i),dt=parse(d),col=i%7,bs=busyAll(v.id,d),b=bs[0];
+    var cls='md'+(col%6===0?' we':'')+(d===t?' td':'')+(dt.getMonth()!==mon?' out':'');
+    var chip=bs.map(function(x){
+      var m=x.type==='maintenance',label=m?'Workshop · '+x.customer:x.customer;
+      var showLab=d===x.start||col===0;
+      return '<span class="chip'+(m?' maint':'')+(x.end<t?' past':'')+(d>x.start&&col!==0?' cl':'')+(d<x.end&&col!==6?' cr':'')+'">'+(showLab?esc(label):'&nbsp;')+'</span>';
+    }).join('');
+    var inner='<span class="dn">'+dt.getDate()+'</span>'+chip;
+    grid+=canWrite()?'<button class="'+cls+'" data-action="mcell" data-d="'+d+'" data-id="'+(b?b.id:'')+'" aria-label="'+fmtS(d)+(b?', booked':', free')+'">'+inner+'</button>':'<div class="'+cls+'">'+inner+'</div>';
+  }
+  var legend='<div class="legend"><span><i class="sw rent"></i>Rental (colour matches the car)</span><span><i class="sw maint"></i>Workshop</span><span><i class="sw td"></i>Today</span>'+(canWrite()?'<span>Tap a free day to book, or a booking to edit it</span>':'')+'</div>';
+  var up=S.bookings.filter(function(b){return b.vehicleId===v.id&&b.end>=t}).sort(function(a,c){return a.start<c.start?-1:1});
+  var list='<div class="panel"><h2>Active and upcoming</h2>'+(up.length?'<div class="list" style="margin-top:0">'+up.map(function(b){
+    var m=b.type==='maintenance',n=days(b.start,b.end),st=bState(b,t);
+    var pill=m?'<span class="pill maint">Workshop</span>':st==='active'?'<span class="pill rent">Active</span>':'<span class="pill up">Upcoming</span>';
+    return '<div class="row"><div class="main"><strong>'+esc(b.customer||'Untitled')+'</strong><span class="sub">'+(b.phone?esc(b.phone):'')+'</span>'+locLine(b)+'</div><div class="c2"><div>'+whenLine(b)+'</div>'+pill+'</div><div class="num">'+(m?'':money(bTotal(b)))+'</div>'+
+      (canWrite()?'<button class="btn sm" data-action="edit-booking" data-id="'+b.id+'">Edit</button>':'<span></span>')+'</div>';
+  }).join('')+'</div>':'<p style="color:var(--muted);margin:0">Nothing booked from today onward.</p>')+'</div>';
+  return head+ctl+'<div class="mgrid" style="'+vcVars(v)+'">'+grid+'</div>'+legend+list;
+}
+function fleetHTML(){
+  var hasEx=S.vehicles.concat(S.bookings).some(function(x){return x.example});
+  var bar='<div class="bar-row"><h2>Fleet</h2><span class="sp"></span>'+(hasEx&&canWrite()?'<button class="btn sm" data-action="clear-examples">Remove example data</button>':'')+(canWrite()?'<button class="btn primary" data-action="add-vehicle">Add vehicle</button>':'')+'</div>';
+  if(!S.vehicles.length)return bar+emptyFleet();
+  return bar+'<div class="list" style="margin-top:0">'+S.vehicles.slice().sort(byName).map(function(v){
+    return '<div class="row"><div class="main" data-action="open-vehicle" data-id="'+v.id+'"><button class="vlink" data-action="open-vehicle" data-id="'+v.id+'">'+dot(v)+esc(v.name)+'</button><span><span class="plate">'+esc(v.plate)+'</span> <span class="sub">'+esc([v.category,v.seats?v.seats+' seats':'',v.transmission].filter(Boolean).join(' · '))+'</span></span></div>'+
+      '<div class="c2">'+statusPill(v)+'</div><div class="num">'+money(v.rate)+'<span class="sub" style="font-weight:400"> /day</span></div>'+
+      (canWrite()?'<button class="btn sm" data-action="edit-vehicle" data-id="'+v.id+'">Edit</button>':'<span></span>')+'</div>';
+  }).join('')+'</div>';
+}
+function bookingsHTML(){
+  var bar='<div class="bar-row"><h2>Bookings</h2><span class="sp"></span>'+
+    '<label class="inl">Show<select id="bk-filter">'+[['all','All'],['active','Active now'],['up','Upcoming'],['past','Past']].map(function(o){return '<option value="'+o[0]+'"'+(S.bf===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label>'+
+    '<input type="search" id="bk-q" placeholder="Search customer or car" value="'+esc(S.q)+'" style="width:200px">'+
+    (canWrite()?'<button class="btn primary" data-action="new-booking">New booking</button>':'')+'</div><div id="bk-list"></div>';
+  return bar;
+}
+function renderBkList(){
+  var box=$('#bk-list');if(!box)return;
+  var t=today(),q=S.q.trim().toLowerCase();
+  var rank={active:0,up:0,past:1};
+  var list=S.bookings.filter(function(b){
+    if(S.bf!=='all'&&bState(b,t)!==S.bf)return false;
+    if(!q)return true;
+    var v=vById(b.vehicleId);
+    return (b.customer+' '+(v?v.name+' '+v.plate:'')).toLowerCase().indexOf(q)>-1;
+  }).sort(function(a,b){
+    var ra=rank[bState(a,t)],rb=rank[bState(b,t)];
+    if(ra!==rb)return ra-rb;
+    return ra===0?(a.start<b.start?-1:1):(a.start<b.start?1:-1);
+  });
+  if(!list.length){box.innerHTML='<div class="empty"><p>'+(S.bookings.length?'No bookings match.':'No bookings yet. Tap a day on the calendar or use New booking.')+'</p></div>';return}
+  box.innerHTML='<div class="list" style="margin-top:0">'+list.map(function(b){
+    var v=vById(b.vehicleId),st=bState(b,t),m=b.type==='maintenance',n=days(b.start,b.end);
+    var pill=m?'<span class="pill maint">Workshop</span>':st==='active'?'<span class="pill rent">Active</span>':st==='up'?'<span class="pill up">Upcoming</span>':'<span class="pill past">Past</span>';
+    return '<div class="row"><div class="main"><strong>'+esc(b.customer||'Untitled')+'</strong><span class="sub">'+(v?dot(v)+esc(v.name)+' · '+esc(v.plate):'Removed vehicle')+(b.phone?' · '+esc(b.phone):'')+'</span>'+locLine(b)+'</div>'+
+      '<div class="c2"><div>'+whenLine(b)+'</div>'+pill+'</div>'+
+      '<div class="num">'+(m?'':money(bTotal(b)))+'</div>'+
+      (canWrite()?'<button class="btn sm" data-action="edit-booking" data-id="'+b.id+'">Edit</button>':'<span></span>')+'</div>';
+  }).join('')+'</div>';
+}
+
+/* ---------- modals ---------- */
+function closeModal(){S.modal=null;var o=$('#ov');o.hidden=true;o.innerHTML=''}
+function todayModal(){
+  var t=today(),out=S.modal.data.v==='out',key=out?'startTime':'endTime',dkey=out?'start':'end';
+  var list=S.bookings.filter(function(b){return b.type==='rental'&&b[dkey]===t}).sort(function(a,b){return (a[key]||'99').localeCompare(b[key]||'99')});
+  var rows=list.map(function(b){
+    var v=vById(b.vehicleId),where=out?b.pickup:b.dropoff;
+    return '<div class="tl-item"><div class="tl-top"><span class="tl-time">'+(b[key]?fmtT(b[key]):'Time not set')+'</span>'+
+      '<button class="btn sm" data-action="edit-booking" data-id="'+b.id+'">Open</button></div>'+
+      '<strong>'+(v?dot(v)+esc(v.name)+' · '+esc(v.plate):'Removed vehicle')+'</strong>'+
+      '<span>'+esc(b.customer||'Untitled')+(b.phone?' · '+esc(b.phone):'')+'</span>'+
+      (where?'<span class="sub">'+(out?'Deliver to: ':'Collect from: ')+esc(where)+'</span>':'')+
+      (b.staying?'<span class="sub">Staying: '+esc(b.staying)+'</span>':'')+
+      (b.notes?'<span class="sub">Notes: '+esc(b.notes)+'</span>':'')+'</div>';
+  }).join('');
+  return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">'+(out?'Deliveries today':'Returns today')+'</h2><p class="sub" style="margin:4px 0 8px">'+esc(fmtL(t))+' · '+list.length+(list.length===1?' vehicle':' vehicles')+(out?' to deliver':' to collect')+'</p>'+
+    (rows||'<p style="color:var(--muted)">Nothing '+(out?'to deliver':'to collect')+' today.</p>')+
+    '<div class="actions"><span class="sp"></span><button class="btn" data-action="close">Close</button></div></div>';
+}
+function drawModal(){
+  var o=$('#ov');o.hidden=false;
+  o.innerHTML=S.modal.kind==='today'?todayModal():S.modal.kind==='booking'?bookingModal():vehicleModal();
+  if(S.modal.kind==='booking')bookingMeta();
+  var f=o.querySelector('input:not([type=date]),select');if(f)f.focus();
+}
+function openBooking(init){
+  if(!canWrite())return;
+  if(!S.vehicles.length){toast('Add a vehicle first.');S.tab='fleet';location.hash='#fleet';renderAll();return}
+  var first=S.vehicles.slice().sort(byName)[0];
+  var d=Object.assign({type:'rental',vehicleId:first.id,customer:'',phone:'',start:today(),end:today(),startTime:'09:00',endTime:'17:00',staying:'',pickup:'',dropoff:'',total:'',notes:''},init||{});
+  if(d.id&&(d.total==null||d.total==='')&&d.rate)d.total=d.rate*rentalDays(d);
+  S.modal={kind:'booking',data:d};drawModal();
+}
+function bookingModal(){
+  var m=S.modal.data,rental=m.type!=='maintenance',edit=!!m.id;
+  var opts=S.vehicles.slice().sort(byName).map(function(v){return '<option value="'+v.id+'"'+(v.id===m.vehicleId?' selected':'')+'>'+esc(v.name)+' · '+esc(v.plate)+'</option>'}).join('');
+  return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">'+(edit?'Edit ':'New ')+(rental?'booking':'workshop block')+'</h2>'+
+    '<div class="seg2" role="group" aria-label="Type"><button type="button" class="'+(rental?'on':'')+'" data-action="bk-type" data-v="rental">Rental</button><button type="button" class="'+(rental?'':'on')+'" data-action="bk-type" data-v="maintenance">Workshop</button></div>'+
+    '<div class="form"><label>Vehicle<select id="f-veh">'+opts+'</select></label>'+
+    '<label>'+(rental?'Customer name':'Work to be done')+'<input id="f-cust" value="'+esc(m.customer)+'" autocomplete="off"></label>'+
+    (rental?'<label>Phone<input id="f-phone" type="tel" value="'+esc(m.phone)+'" autocomplete="off"></label>':'')+
+    '<div class="grid2"><label>'+(rental?'Pick-up date':'From date')+'<input id="f-start" type="date" value="'+m.start+'"></label><label>'+(rental?'Pick-up time':'From time')+'<input id="f-stime" type="time" value="'+esc(m.startTime)+'"></label></div>'+
+    '<div class="grid2"><label>'+(rental?'Return date':'Until date')+'<input id="f-end" type="date" value="'+m.end+'"></label><label>'+(rental?'Return time':'Until time')+'<input id="f-etime" type="time" value="'+esc(m.endTime)+'"></label></div>'+
+    (rental?'<label>Where they are staying<input id="f-staying" list="loc-list" value="'+esc(m.staying)+'" placeholder="Hotel, villa or address" autocomplete="off"></label>'+
+      '<label>Pick-up location<input id="f-pickup" list="loc-list" value="'+esc(m.pickup)+'" placeholder="e.g. Grantley Adams Airport" autocomplete="off"></label>'+
+      '<label>Drop-off location<input id="f-dropoff" list="loc-list" value="'+esc(m.dropoff)+'" placeholder="e.g. Hotel in St. Lawrence Gap" autocomplete="off"></label>'+locList()+
+      '<label>Total amount (USD)<input id="f-total" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.total)+'"></label>':'')+
+    '<label>Notes<textarea id="f-notes" rows="2">'+esc(m.notes)+'</textarea></label><div id="f-meta" class="meta"></div></div>'+
+    '<div class="actions">'+(edit?'<button class="btn danger" data-action="del">Delete</button>':'')+'<span class="sp"></span><button class="btn" data-action="close">Cancel</button><button class="btn primary" id="f-save" data-action="save">Save</button></div></div>';
+}
+function locList(){
+  var seen={},out=[];
+  S.bookings.forEach(function(b){[b.staying,b.pickup,b.dropoff].forEach(function(l){if(l&&!seen[l]){seen[l]=1;out.push(l)}})});
+  out.sort();
+  return '<datalist id="loc-list">'+out.map(function(l){return '<option value="'+esc(l)+'">'}).join('')+'</datalist>';
+}
+function readBooking(){
+  var m=S.modal.data,g=function(id){return document.getElementById(id)};
+  m.vehicleId=g('f-veh').value;m.customer=g('f-cust').value;
+  if(g('f-phone'))m.phone=g('f-phone').value;
+  m.start=g('f-start').value;m.end=g('f-end').value;
+  m.startTime=g('f-stime').value;m.endTime=g('f-etime').value;
+  if(g('f-staying'))m.staying=g('f-staying').value;
+  if(g('f-pickup'))m.pickup=g('f-pickup').value;
+  if(g('f-dropoff'))m.dropoff=g('f-dropoff').value;
+  if(g('f-total'))m.total=g('f-total').value===''?'':(Number(g('f-total').value)||0);
+  m.notes=g('f-notes').value;
+}
+function bookingMeta(){
+  var m=S.modal.data,box=$('#f-meta'),btn=$('#f-save');if(!box)return;
+  var msg='',bad=false,rental=m.type!=='maintenance';
+  if(!m.start||!m.end||m.end<m.start){msg='The return date must be on or after the pick-up date.';bad=true}
+  else if(!m.startTime||!m.endTime){msg='Enter both times.';bad=true}
+  else if(m.end+'T'+m.endTime<=m.start+'T'+m.startTime){msg='The return time must be after the pick-up time.';bad=true}
+  else{
+    var n=rentalDays({start:m.start,end:m.end,startTime:m.startTime,endTime:m.endTime}),c=conflicts(m.vehicleId,m.start,m.end,m.id,m.startTime,m.endTime);
+    if(c.length){msg='Not available. This car is already booked: '+c.map(function(x){return (x.type==='maintenance'?'workshop':x.customer)+' ('+whenS(x.start,x.startTime)+' – '+whenS(x.end,x.endTime)+')'}).join('; ');bad=true}
+    else{msg=n+(n===1?' day':' days');if(rental&&Number(m.total)>0)msg+=' · about '+money(Number(m.total)/n)+' per day'}
+  }
+  var noName=!String(m.customer).trim();
+  box.className='meta'+(bad?' bad':'');box.textContent=msg;
+  btn.disabled=bad||noName;
+}
+function saveBooking(){
+  readBooking();bookingMeta();
+  if($('#f-save').disabled)return;
+  var m=S.modal.data;
+  var obj={id:m.id||uid('b'),vehicleId:m.vehicleId,type:m.type,customer:m.customer.trim(),phone:(m.phone||'').trim(),start:m.start,end:m.end,startTime:m.startTime,endTime:m.endTime,staying:m.type==='rental'?(m.staying||'').trim():'',pickup:m.type==='rental'?(m.pickup||'').trim():'',dropoff:m.type==='rental'?(m.dropoff||'').trim():'',total:m.type==='rental'?(Number(m.total)||0):0,notes:m.notes.trim(),created:m.created||Date.now()};
+  if(m.example)obj.example=true;
+  save('bookings',obj).then(function(ok){if(ok){closeModal();toast('Saved')}});
+}
+function openVehicle(v){
+  if(!canWrite())return;
+  var base={name:'',plate:'',category:'Compact',seats:5,transmission:'Automatic',rate:100,notes:'',color:v?'teal':nextColor()};
+  S.modal={kind:'vehicle',data:Object.assign(base,v||{}),confirm:false};drawModal();
+}
+function vehicleModal(){
+  var m=S.modal.data,edit=!!m.id;
+  return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">'+(edit?'Edit vehicle':'Add vehicle')+'</h2><div class="form">'+
+    '<label>Make, model and year<input id="v-name" value="'+esc(m.name)+'" placeholder="Toyota Aqua 2022" autocomplete="off"></label>'+
+    '<label>Plate number<input id="v-plate" value="'+esc(m.plate)+'" autocomplete="off"></label>'+
+    '<div class="grid2"><label>Type<select id="v-cat">'+(CATS.indexOf(m.category)<0&&m.category?[m.category]:[]).concat(CATS).map(function(c){return '<option'+(c===m.category?' selected':'')+'>'+c+'</option>'}).join('')+'</select></label>'+
+    '<label>Seats<input id="v-seats" type="number" min="1" max="20" value="'+esc(m.seats)+'"></label></div>'+
+    '<div class="grid2"><label>Transmission<select id="v-trans">'+['Automatic','Manual'].map(function(c){return '<option'+(c===m.transmission?' selected':'')+'>'+c+'</option>'}).join('')+'</select></label>'+
+    '<label>Daily rate (USD)<input id="v-rate" type="number" min="0" step="1" inputmode="decimal" value="'+esc(m.rate)+'"></label></div>'+
+    '<div><span class="fl">Colour on the calendar</span><div class="swatches">'+PALETTE.map(function(p){return '<button type="button" class="swb'+((m.color||'teal')===p[0]?' on':'')+'" data-action="pick-color" data-v="'+p[0]+'" style="--vc:'+p[2]+'" aria-label="'+p[1]+'" title="'+p[1]+'"></button>'}).join('')+'</div></div>'+
+    '<label>Notes<textarea id="v-notes" rows="2">'+esc(m.notes)+'</textarea></label><div id="f-meta" class="meta"></div></div>'+
+    '<div class="actions">'+(edit?'<button class="btn danger" data-action="del">Delete</button>':'')+'<span class="sp"></span><button class="btn" data-action="close">Cancel</button><button class="btn primary" data-action="save">Save</button></div></div>';
+}
+function saveVehicle(){
+  var g=function(id){return document.getElementById(id).value},m=S.modal.data;
+  var name=g('v-name').trim(),plate=g('v-plate').trim();
+  if(!name||!plate||!g('v-cat')){$('#f-meta').className='meta bad';$('#f-meta').textContent='Enter the vehicle name and plate number, and choose a type.';return}
+  var obj=Object.assign({},m,{id:m.id||uid('v'),name:name,plate:plate,category:g('v-cat'),seats:Number(g('v-seats'))||0,transmission:g('v-trans'),rate:Number(g('v-rate'))||0,notes:g('v-notes').trim(),created:m.created||Date.now()});
+  save('vehicles',obj).then(function(ok){if(ok){closeModal();toast('Saved')}});
+}
+function delModal(btn){
+  var m=S.modal.data,isV=S.modal.kind==='vehicle';
+  if(!S.modal.confirm){
+    S.modal.confirm=true;
+    var n=isV?S.bookings.filter(function(b){return b.vehicleId===m.id}).length:0;
+    btn.textContent=isV&&n?'Click again to delete car and '+n+(n===1?' booking':' bookings'):'Click again to delete';
+    return;
+  }
+  var jobs=[];
+  if(isV)S.bookings.filter(function(b){return b.vehicleId===m.id}).forEach(function(b){jobs.push(remove('bookings',b.id))});
+  jobs.push(remove(isV?'vehicles':'bookings',m.id));
+  Promise.all(jobs).then(function(){closeModal();toast('Deleted')});
+}
+function clearExamples(){
+  var jobs=[];
+  S.bookings.filter(function(x){return x.example}).forEach(function(x){jobs.push(remove('bookings',x.id))});
+  S.vehicles.filter(function(x){return x.example}).forEach(function(x){jobs.push(remove('vehicles',x.id))});
+  Promise.all(jobs).then(function(){toast('Example data removed')});
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',function(e){
+  var el=e.target.closest('[data-action]');
+  if(!el){if(e.target.id==='ov')closeModal();return}
+  var a=el.dataset.action,d=el.dataset;
+  if(a==='tab'){S.tab=d.v;location.hash='#'+d.v;renderAll()}
+  else if(a==='open-vehicle'){if(S.tab!=='vehicle')S.back=S.tab;S.tab='vehicle';S.vid=d.id;S.month=today().slice(0,8)+'01';location.hash='#car-'+d.id;renderAll();window.scrollTo(0,0)}
+  else if(a==='back'){S.tab=S.back||'calendar';location.hash='#'+S.tab;renderAll()}
+  else if(a==='mnav'){S.month=monthAdd(S.month,Number(d.n));renderMain()}
+  else if(a==='mtoday'){S.month=today().slice(0,8)+'01';renderMain()}
+  else if(a==='mcell'){
+    if(d.id){var mb=S.bookings.find(function(x){return x.id===d.id});if(mb)openBooking(Object.assign({},mb,{rateTouched:true}))}
+    else openBooking({vehicleId:S.vid,start:d.d,end:d.d});
+  }
+  else if(a==='book-car')openBooking({vehicleId:S.vid});
+  else if(a==='nav'){S.start=addDays(S.start,Number(d.n));renderMain()}
+  else if(a==='today'){S.start=today();renderMain()}
+  else if(a==='cell')openBooking({vehicleId:d.v,start:d.d,end:d.d});
+  else if(a==='today-list'){S.modal={kind:'today',data:{v:d.v}};drawModal()}
+  else if(a==='edit-booking'){var b=S.bookings.find(function(x){return x.id===d.id});if(b)openBooking(Object.assign({},b,{rateTouched:true}))}
+  else if(a==='new-booking')openBooking();
+  else if(a==='book-from-finder')openBooking({vehicleId:d.v,start:S.fin.start,end:S.fin.end,startTime:S.fin.startTime,endTime:S.fin.endTime});
+  else if(a==='add-vehicle')openVehicle();
+  else if(a==='pick-color'){S.modal.data.color=d.v;document.querySelectorAll('.swb').forEach(function(x){x.classList.toggle('on',x.dataset.v===d.v)})}
+  else if(a==='edit-vehicle'){var v=vById(d.id);if(v)openVehicle(v)}
+  else if(a==='bk-type'){readBooking();S.modal.data.type=d.v;drawModal()}
+  else if(a==='close')closeModal();
+  else if(a==='save'){S.modal.kind==='booking'?saveBooking():saveVehicle()}
+  else if(a==='del')delModal(el);
+  else if(a==='clear-examples')clearExamples();
+});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&S.modal)closeModal()});
+document.addEventListener('change',function(e){
+  var id=e.target.id;
+  if(e.target.closest('#ov')&&S.modal&&S.modal.kind==='booking'){
+    readBooking();var m=S.modal.data;
+    if(id==='f-start'&&m.end<m.start){m.end=m.start;$('#f-end').value=m.end}
+    bookingMeta();return;
+  }
+  if(id==='c-span'){S.span=Number(e.target.value);renderMain()}
+  else if(id==='c-cat'){S.cat=e.target.value;renderMain()}
+  else if(id==='c-jump'&&e.target.value){S.start=e.target.value;renderMain()}
+  else if(id==='fin-start'||id==='fin-end'||id==='fin-stime'||id==='fin-etime'||id==='fin-cat'){
+    S.fin.start=$('#fin-start').value;S.fin.end=$('#fin-end').value;S.fin.cat=$('#fin-cat').value;
+    S.fin.startTime=$('#fin-stime').value;S.fin.endTime=$('#fin-etime').value;
+    if(id==='fin-start'&&S.fin.end<S.fin.start)S.fin.end=S.fin.start;
+    renderMain();
+  }
+  else if(id==='bk-filter'){S.bf=e.target.value;renderBkList()}
+});
+document.addEventListener('input',function(e){
+  if(e.target.id==='bk-q'){S.q=e.target.value;renderBkList();return}
+  if(e.target.closest('#ov')&&S.modal&&S.modal.kind==='booking'){
+    readBooking();bookingMeta();
+  }
+});
+function fromHash(){
+  var h=(location.hash||'').slice(1);
+  if(h==='calendar'||h==='fleet'||h==='bookings'){S.tab=h;renderAll()}
+  else if(h.indexOf('car-')===0){S.tab='vehicle';S.vid=h.slice(4);if(!S.month)S.month=today().slice(0,8)+'01';renderAll()}
+}
+window.addEventListener('hashchange',fromHash);
+
+/* ---------- boot ---------- */
+function mapDocs(snap){return snap.docs.map(function(d){return Object.assign({id:d.id},d.data())})}
+function init(){
+  fromHash();renderAll();
+  firebase.auth().onAuthStateChanged(function(user){
+    document.getElementById('loginGate').hidden=!!user;
+    document.getElementById('signOut').hidden=!user;
+    if(window.fleetUnsub){window.fleetUnsub.forEach(function(fn){fn()});window.fleetUnsub=null}
+    S.vehicles=[];S.bookings=[];gotV=false;gotB=false;
+    if(!user){db=null;S.ready=false;renderAll();return}
+    db=firebase.firestore();S.ready=true;S.warn='Loading saved fleet data…';renderAll();
+    var fail=function(e){S.warn='Cannot read Firebase data. Check your Firestore rules and account access.';renderAll()};
+    var u1=db.collection('vehicles').onSnapshot(function(s){S.vehicles=mapDocs(s);gotV=true;if(gotB)S.warn='';renderAll()},fail);
+    var u2=db.collection('bookings').onSnapshot(function(s){S.bookings=mapDocs(s);gotB=true;if(gotV)S.warn='';renderAll()},fail);
+    window.fleetUnsub=[u1,u2];
+  });
+}
+init();
+})();
+</script>
+
+</body></html>
