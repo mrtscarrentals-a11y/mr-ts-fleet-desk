@@ -217,6 +217,7 @@ button.md:hover{background:var(--accent-soft)}
 <div id="ov" class="ov" hidden></div>
 <div id="toast" class="toast" hidden role="status"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -340,7 +341,7 @@ var canWrite=function(){return !S.readOnly};
 /* ---------- render ---------- */
 function renderAll(){
   $('#today-label').textContent=fmtL(today());
-  $('#top-actions').innerHTML=canWrite()?'<button class="btn primary" data-action="new-booking">New booking</button>':'';
+  $('#top-actions').innerHTML='<button class="btn" data-action="backup">Backup</button>'+(canWrite()?'<button class="btn primary" data-action="new-booking">New booking</button>':'');
   $('#banner').innerHTML=S.warn?'<div class="note">'+esc(S.warn)+'</div>':'';
   renderStats();renderTabs();renderMain();
 }
@@ -514,6 +515,76 @@ function renderBkList(){
 
 /* ---------- modals ---------- */
 function closeModal(){S.modal=null;var o=$('#ov');o.hidden=true;o.innerHTML=''}
+/* ---------- run sheet + backup export ---------- */
+function runSheetText(){
+  var t=today();
+  function part(title,key,dkey,out){
+    var list=S.bookings.filter(function(b){return b.type==='rental'&&b[dkey]===t}).sort(function(a,b){return (a[key]||'99').localeCompare(b[key]||'99')});
+    var lines=[title+' ('+list.length+')'];
+    if(!list.length)lines.push('  None');
+    list.forEach(function(b,i){
+      var v=vById(b.vehicleId),where=out?b.pickup:b.dropoff;
+      lines.push((i+1)+'. '+(b[key]?fmtT(b[key]):'Time not set')+' - '+(v?v.name+' ('+v.plate+')':'Removed vehicle'));
+      lines.push('   '+(b.customer||'Untitled')+(b.phone?' - '+b.phone:''));
+      if(where)lines.push('   '+(out?'Deliver to: ':'Collect from: ')+where);
+      if(b.staying)lines.push('   Staying: '+b.staying);
+      if(b.notes)lines.push('   Notes: '+b.notes);
+    });
+    return lines.join('\n');
+  }
+  return 'Run sheet - '+fmtL(t)+'\n\n'+part('DELIVERIES','startTime','start',true)+'\n\n'+part('RETURNS','endTime','end',false);
+}
+function copyText(txt){
+  function fallback(){
+    var ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,txt.length);
+    var ok=false;try{ok=document.execCommand('copy')}catch(e){}
+    document.body.removeChild(ta);return ok;
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    return navigator.clipboard.writeText(txt).then(function(){return true},function(){return fallback()});
+  }
+  return Promise.resolve(fallback());
+}
+function exportRows(){
+  var vs=S.vehicles.slice().sort(function(a,b){return (a.name||'').localeCompare(b.name||'')});
+  var fleet=[['Vehicle','Plate','Type','Seats','Transmission','Daily rate (USD)','Colour','Notes']].concat(vs.map(function(v){
+    return [v.name||'',v.plate||'',v.category||'',v.seats==null?'':v.seats,v.transmission||'',v.rate==null?'':v.rate,v.color||'',v.notes||''];
+  }));
+  var bs=S.bookings.slice().sort(function(a,b){return ((a.start||'')+(a.startTime||'')).localeCompare((b.start||'')+(b.startTime||''))});
+  var book=[['Vehicle','Plate','Type','Customer','Phone','Staying at','Pick-up location','Drop-off location','Start date','Start time','End date','End time','Days (24h)','Total (USD)','Notes']].concat(bs.map(function(b){
+    var v=vById(b.vehicleId),m=b.type==='maintenance';
+    return [v?v.name:'Removed vehicle',v?v.plate:'',m?'Workshop':'Rental',b.customer||'',b.phone||'',b.staying||'',b.pickup||'',b.dropoff||'',b.start||'',b.startTime||'',b.end||'',b.endTime||'',m?'':rentalDays(b),m?'':bTotal(b),b.notes||''];
+  }));
+  return {fleet:fleet,bookings:book};
+}
+function csvOf(rows){
+  return rows.map(function(r){return r.map(function(c){c=String(c==null?'':c);return /[",\n\r]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(',')}).join('\r\n');
+}
+function saveBlob(name,blob){
+  var a=document.createElement('a'),u=URL.createObjectURL(blob);
+  a.href=u;a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(u)},1500);
+}
+function exportBackup(){
+  var d=exportRows(),stamp=today();
+  if(window.XLSX){
+    try{
+      var wb=XLSX.utils.book_new();
+      var w1=XLSX.utils.aoa_to_sheet(d.fleet),w2=XLSX.utils.aoa_to_sheet(d.bookings);
+      w1['!cols']=[{wch:24},{wch:10},{wch:18},{wch:7},{wch:13},{wch:15},{wch:12},{wch:28}];
+      w2['!cols']=[{wch:24},{wch:10},{wch:10},{wch:22},{wch:15},{wch:22},{wch:24},{wch:24},{wch:11},{wch:9},{wch:11},{wch:9},{wch:9},{wch:11},{wch:28}];
+      XLSX.utils.book_append_sheet(wb,w1,'Fleet');XLSX.utils.book_append_sheet(wb,w2,'Bookings');
+      var out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
+      saveBlob('Fleet-Desk-backup-'+stamp+'.xlsx',new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+      toast('Backup downloaded ('+S.vehicles.length+' vehicles, '+S.bookings.length+' bookings)');return;
+    }catch(e){}
+  }
+  saveBlob('Fleet-Desk-bookings-'+stamp+'.csv',new Blob(['﻿'+csvOf(d.bookings)],{type:'text/csv;charset=utf-8'}));
+  setTimeout(function(){saveBlob('Fleet-Desk-fleet-'+stamp+'.csv',new Blob(['﻿'+csvOf(d.fleet)],{type:'text/csv;charset=utf-8'}))},800);
+  toast('Backup downloaded as two CSV files');
+}
+
 function todayModal(){
   var t=today(),out=S.modal.data.v==='out',key=out?'startTime':'endTime',dkey=out?'start':'end';
   var list=S.bookings.filter(function(b){return b.type==='rental'&&b[dkey]===t}).sort(function(a,b){return (a[key]||'99').localeCompare(b[key]||'99')});
@@ -529,7 +600,7 @@ function todayModal(){
   }).join('');
   return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">'+(out?'Deliveries today':'Returns today')+'</h2><p class="sub" style="margin:4px 0 8px">'+esc(fmtL(t))+' · '+list.length+(list.length===1?' vehicle':' vehicles')+(out?' to deliver':' to collect')+'</p>'+
     (rows||'<p style="color:var(--muted)">Nothing '+(out?'to deliver':'to collect')+' today.</p>')+
-    '<div class="actions"><span class="sp"></span><button class="btn" data-action="close">Close</button></div></div>';
+    '<div class="actions"><button class="btn" data-action="copy-run">Copy full run sheet</button><span class="sp"></span><button class="btn" data-action="close">Close</button></div></div>';
 }
 function drawModal(){
   var o=$('#ov');o.hidden=false;
@@ -666,6 +737,8 @@ document.addEventListener('click',function(e){
   else if(a==='nav'){S.start=addDays(S.start,Number(d.n));renderMain()}
   else if(a==='today'){S.start=today();renderMain()}
   else if(a==='cell')openBooking({vehicleId:d.v,start:d.d,end:d.d});
+  else if(a==='copy-run'){copyText(runSheetText()).then(function(ok){toast(ok?'Run sheet copied - paste it into WhatsApp':'Could not copy. Try again.')})}
+  else if(a==='backup')exportBackup();
   else if(a==='today-list'){S.modal={kind:'today',data:{v:d.v}};drawModal()}
   else if(a==='edit-booking'){var b=S.bookings.find(function(x){return x.id===d.id});if(b)openBooking(Object.assign({},b,{rateTouched:true}))}
   else if(a==='new-booking')openBooking();
