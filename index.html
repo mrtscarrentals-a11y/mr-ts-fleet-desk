@@ -213,6 +213,7 @@ button.md:hover{background:var(--accent-soft)}
   <div class="stats" id="stats"></div>
   <div class="tabs" role="tablist" id="tabs"></div>
   <div id="main"></div>
+  <button id="signOut" type="button" hidden>Sign out</button>
 </div>
 <div id="ov" class="ov" hidden></div>
 <div id="toast" class="toast" hidden role="status"></div>
@@ -238,10 +239,10 @@ firebase.initializeApp(firebaseConfig);
 #loginGate[hidden]{display:none}#loginGate form{background:white;padding:28px;border-radius:18px;box-shadow:0 12px 45px #12213b22;width:min(400px,100%);display:grid;gap:14px}
 #loginGate input{padding:13px;border:1px solid #bbc6d3;border-radius:9px;font:inherit;width:100%}#loginGate button{padding:13px;border:0;border-radius:9px;background:#175cd3;color:white;font-weight:bold;font:inherit}
 #loginError{color:#b42318;font-size:14px;min-height:18px}
-#signOut{position:fixed;right:14px;bottom:14px;z-index:99;background:#fff;border:1px solid #ccd5e1;border-radius:10px;padding:9px 12px;color:#23344d}
+#signOut{display:block;margin:32px auto 8px;background:#fff;border:1px solid #ccd5e1;border-radius:10px;padding:9px 16px;color:#23344d;font:inherit;cursor:pointer}
+#signOut[hidden]{display:none}
 </style>
 <div id="loginGate"><form id="loginForm"><h2>Mr Ts Fleet Desk</h2><p>Sign in to access your fleet and bookings.</p><label>Email<input id="loginEmail" type="email" required autocomplete="username" value="mr.tscarrentals@outlook.com"></label><label>Password<input id="loginPassword" type="password" required autocomplete="current-password"></label><div id="loginError" role="alert"></div><button type="submit">Sign in</button></form></div>
-<button id="signOut" type="button" hidden>Sign out</button>
 <script>
 document.getElementById('loginForm').addEventListener('submit',async function(e){e.preventDefault();const err=document.getElementById('loginError');err.textContent='';try{await firebase.auth().signInWithEmailAndPassword(document.getElementById('loginEmail').value.trim(),document.getElementById('loginPassword').value)}catch(ex){err.textContent='Sign-in failed. Check your email and password.'}});
 document.getElementById('signOut').addEventListener('click',function(){firebase.auth().signOut()});
