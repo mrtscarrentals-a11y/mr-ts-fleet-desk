@@ -143,6 +143,11 @@ div.bar{cursor:default}
 .pill.maint{background:var(--warn-soft);color:var(--warn)}
 .pill.up{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 .pill.past{background:var(--bg);color:var(--muted)}
+.c2 .pill{margin-right:6px}
+.lnk{display:inline-block;padding:2px 9px;margin-left:4px;border:1px solid var(--line);border-radius:99px;font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;background:var(--surface,transparent)}
+button.late-banner{display:block;width:100%;text-align:left;font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+label.chk{display:flex;align-items:center;gap:8px;font-weight:500}
+label.chk input{width:auto}
 .empty{text-align:center;padding:44px 16px;border:1px dashed var(--line);border-radius:10px;background:var(--surface)}
 .empty h2{margin-bottom:6px}
 .empty p{color:var(--muted);margin:0 0 16px}
@@ -343,7 +348,8 @@ var canWrite=function(){return !S.readOnly};
 function renderAll(){
   $('#today-label').textContent=fmtL(today());
   $('#top-actions').innerHTML='<button class="btn" data-action="backup">Backup</button>'+(canWrite()?'<button class="btn primary" data-action="new-booking">New booking</button>':'');
-  $('#banner').innerHTML=S.warn?'<div class="note">'+esc(S.warn)+'</div>':'';
+  var late=S.bookings.filter(isLate);
+  $('#banner').innerHTML=(S.warn?'<div class="note">'+esc(S.warn)+'</div>':'')+(late.length?'<button class="late-banner" data-action="today-list" data-v="late">'+late.length+(late.length===1?' overdue return':' overdue returns')+' - tap to see</button>':'');
   renderStats();renderTabs();renderMain();
 }
 function renderStats(){
@@ -484,7 +490,7 @@ function fleetHTML(){
 }
 function bookingsHTML(){
   var bar='<div class="bar-row"><h2>Bookings</h2><span class="sp"></span>'+
-    '<label class="inl">Show<select id="bk-filter">'+[['all','All'],['active','Active now'],['up','Upcoming'],['past','Past']].map(function(o){return '<option value="'+o[0]+'"'+(S.bf===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label>'+
+    '<label class="inl">Show<select id="bk-filter">'+[['all','All'],['active','Active now'],['up','Upcoming'],['past','Past'],['late','Overdue'],['owing','Owing money']].map(function(o){return '<option value="'+o[0]+'"'+(S.bf===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label>'+
     '<input type="search" id="bk-q" placeholder="Search customer or car" value="'+esc(S.q)+'" style="width:200px">'+
     (canWrite()?'<button class="btn primary" data-action="new-booking">New booking</button>':'')+'</div><div id="bk-list"></div>';
   return bar;
@@ -494,7 +500,9 @@ function renderBkList(){
   var t=today(),q=S.q.trim().toLowerCase();
   var rank={active:0,up:0,past:1};
   var list=S.bookings.filter(function(b){
-    if(S.bf!=='all'&&bState(b,t)!==S.bf)return false;
+    if(S.bf==='owing'){var pi=payInfo(b);if(!pi||pi.bal<=0.005)return false}
+    else if(S.bf==='late'){if(!isLate(b))return false}
+    else if(S.bf!=='all'&&bState(b,t)!==S.bf)return false;
     if(!q)return true;
     var v=vById(b.vehicleId);
     return (b.customer+' '+(v?v.name+' '+v.plate:'')).toLowerCase().indexOf(q)>-1;
@@ -507,8 +515,8 @@ function renderBkList(){
   box.innerHTML='<div class="list" style="margin-top:0">'+list.map(function(b){
     var v=vById(b.vehicleId),st=bState(b,t),m=b.type==='maintenance',n=days(b.start,b.end);
     var pill=m?'<span class="pill maint">Workshop</span>':st==='active'?'<span class="pill rent">Active</span>':st==='up'?'<span class="pill up">Upcoming</span>':'<span class="pill past">Past</span>';
-    return '<div class="row"><div class="main"><strong>'+esc(b.customer||'Untitled')+'</strong><span class="sub">'+(v?dot(v)+esc(v.name)+' · '+esc(v.plate):'Removed vehicle')+(b.phone?' · '+esc(b.phone):'')+'</span>'+locLine(b)+'</div>'+
-      '<div class="c2"><div>'+whenLine(b)+'</div>'+pill+'</div>'+
+    return '<div class="row"><div class="main"><strong>'+esc(b.customer||'Untitled')+'</strong><span class="sub">'+(v?dot(v)+esc(v.name)+' · '+esc(v.plate):'Removed vehicle')+(b.phone?' · '+phoneLinks(b.phone):'')+'</span>'+locLine(b)+'</div>'+
+      '<div class="c2"><div>'+whenLine(b)+'</div>'+pill+payPill(b)+lateTag(b)+'</div>'+
       '<div class="num">'+(m?'':money(bTotal(b)))+'</div>'+
       (canWrite()?'<button class="btn sm" data-action="edit-booking" data-id="'+b.id+'">Edit</button>':'<span></span>')+'</div>';
   }).join('')+'</div>';
@@ -517,6 +525,19 @@ function renderBkList(){
 /* ---------- modals ---------- */
 function closeModal(){S.modal=null;var o=$('#ov');o.hidden=true;o.innerHTML=''}
 /* ---------- run sheet + backup export ---------- */
+/* ---------- phone links, payments, late returns ---------- */
+function phoneDigits(p){var d=String(p||'').replace(/\D/g,'');if(!d)return '';if(d.length===7)d='1246'+d;else if(d.length===10)d='1'+d;return d}
+function phoneLinks(p){var d=phoneDigits(p);if(!d)return esc(p||'');return esc(p)+' <a class="lnk" href="tel:+'+d+'">Call</a><a class="lnk" href="https://wa.me/'+d+'" target="_blank" rel="noopener">WhatsApp</a>'}
+function payInfo(b){if(b.type==='maintenance'||b.paid==null||b.paid==='')return null;return {paid:Number(b.paid)||0,bal:bTotal(b)-(Number(b.paid)||0)}}
+function payPill(b){var i=payInfo(b);if(!i)return '';return i.bal<=0.005?'<span class="pill free">Paid</span>':'<span class="pill maint">Owes '+money(i.bal)+'</span>'}
+function isLate(b){
+  if(b.type!=='rental'||b.returned===true||!b.end)return false;
+  var now=new Date(),n=iso(now)+'T'+pad(now.getHours())+':'+pad(now.getMinutes());
+  if(b.end+'T'+(b.endTime||'23:59')>=n)return false;
+  return diff(b.end,iso(now))<=14;
+}
+function lateTag(b){return isLate(b)?'<span class="pill maint">Overdue</span>':''}
+
 function runSheetText(){
   var t=today();
   function part(title,key,dkey,out){
@@ -527,6 +548,7 @@ function runSheetText(){
       var v=vById(b.vehicleId),where=out?b.pickup:b.dropoff;
       lines.push((i+1)+'. '+(b[key]?fmtT(b[key]):'Time not set')+' - '+(v?v.name+' ('+v.plate+')':'Removed vehicle'));
       lines.push('   '+(b.customer||'Untitled')+(b.phone?' - '+b.phone:''));
+      var pi=payInfo(b);if(pi&&pi.bal>0.005)lines.push('   Balance due: '+money(pi.bal));
       if(where)lines.push('   '+(out?'Deliver to: ':'Collect from: ')+where);
       if(b.staying)lines.push('   Staying: '+b.staying);
       if(b.notes)lines.push('   Notes: '+b.notes);
@@ -553,9 +575,9 @@ function exportRows(){
     return [v.name||'',v.plate||'',v.category||'',v.seats==null?'':v.seats,v.transmission||'',v.rate==null?'':v.rate,v.color||'',v.notes||''];
   }));
   var bs=S.bookings.slice().sort(function(a,b){return ((a.start||'')+(a.startTime||'')).localeCompare((b.start||'')+(b.startTime||''))});
-  var book=[['Vehicle','Plate','Type','Customer','Phone','Staying at','Pick-up location','Drop-off location','Start date','Start time','End date','End time','Days (24h)','Total (USD)','Notes']].concat(bs.map(function(b){
+  var book=[['Vehicle','Plate','Type','Customer','Phone','Staying at','Pick-up location','Drop-off location','Start date','Start time','End date','End time','Days (24h)','Total (USD)','Paid (USD)','Returned','Notes']].concat(bs.map(function(b){
     var v=vById(b.vehicleId),m=b.type==='maintenance';
-    return [v?v.name:'Removed vehicle',v?v.plate:'',m?'Workshop':'Rental',b.customer||'',b.phone||'',b.staying||'',b.pickup||'',b.dropoff||'',b.start||'',b.startTime||'',b.end||'',b.endTime||'',m?'':rentalDays(b),m?'':bTotal(b),b.notes||''];
+    return [v?v.name:'Removed vehicle',v?v.plate:'',m?'Workshop':'Rental',b.customer||'',b.phone||'',b.staying||'',b.pickup||'',b.dropoff||'',b.start||'',b.startTime||'',b.end||'',b.endTime||'',m?'':rentalDays(b),m?'':bTotal(b),b.paid==null?'':b.paid,b.returned?'Yes':'',b.notes||''];
   }));
   return {fleet:fleet,bookings:book};
 }
@@ -574,7 +596,7 @@ function exportBackup(){
       var wb=XLSX.utils.book_new();
       var w1=XLSX.utils.aoa_to_sheet(d.fleet),w2=XLSX.utils.aoa_to_sheet(d.bookings);
       w1['!cols']=[{wch:24},{wch:10},{wch:18},{wch:7},{wch:13},{wch:15},{wch:12},{wch:28}];
-      w2['!cols']=[{wch:24},{wch:10},{wch:10},{wch:22},{wch:15},{wch:22},{wch:24},{wch:24},{wch:11},{wch:9},{wch:11},{wch:9},{wch:9},{wch:11},{wch:28}];
+      w2['!cols']=[{wch:24},{wch:10},{wch:10},{wch:22},{wch:15},{wch:22},{wch:24},{wch:24},{wch:11},{wch:9},{wch:11},{wch:9},{wch:9},{wch:11},{wch:11},{wch:9},{wch:28}];
       XLSX.utils.book_append_sheet(wb,w1,'Fleet');XLSX.utils.book_append_sheet(wb,w2,'Bookings');
       var out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
       saveBlob('Fleet-Desk-backup-'+stamp+'.xlsx',new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
@@ -587,21 +609,27 @@ function exportBackup(){
 }
 
 function todayModal(){
-  var t=today(),out=S.modal.data.v==='out',key=out?'startTime':'endTime',dkey=out?'start':'end';
-  var list=S.bookings.filter(function(b){return b.type==='rental'&&b[dkey]===t}).sort(function(a,b){return (a[key]||'99').localeCompare(b[key]||'99')});
+  var t=today(),kind=S.modal.data.v,out=kind==='out',late=kind==='late',key=out?'startTime':'endTime',dkey=out?'start':'end';
+  var list=late?S.bookings.filter(isLate).sort(function(a,b){return ((a.end||'')+(a.endTime||'')).localeCompare((b.end||'')+(b.endTime||''))})
+    :S.bookings.filter(function(b){return b.type==='rental'&&b[dkey]===t}).sort(function(a,b){return (a[key]||'99').localeCompare(b[key]||'99')});
   var rows=list.map(function(b){
     var v=vById(b.vehicleId),where=out?b.pickup:b.dropoff;
-    return '<div class="tl-item"><div class="tl-top"><span class="tl-time">'+(b[key]?fmtT(b[key]):'Time not set')+'</span>'+
-      '<button class="btn sm" data-action="edit-booking" data-id="'+b.id+'">Open</button></div>'+
+    var when=late?whenS(b.end,b.endTime):(b[key]?fmtT(b[key]):'Time not set');
+    var tags=payPill(b)+((!out&&b.returned)?'<span class="pill past">Returned</span>':'');
+    return '<div class="tl-item"><div class="tl-top"><span class="tl-time">'+when+'</span>'+
+      '<span>'+((!out&&canWrite()&&!b.returned)?'<button class="btn sm" data-action="mark-returned" data-id="'+b.id+'">Mark returned</button> ':'')+'<button class="btn sm" data-action="edit-booking" data-id="'+b.id+'">Open</button></span></div>'+
       '<strong>'+(v?dot(v)+esc(v.name)+' · '+esc(v.plate):'Removed vehicle')+'</strong>'+
-      '<span>'+esc(b.customer||'Untitled')+(b.phone?' · '+esc(b.phone):'')+'</span>'+
+      '<span>'+esc(b.customer||'Untitled')+(b.phone?' · '+phoneLinks(b.phone):'')+'</span>'+
+      (tags?'<span>'+tags+'</span>':'')+
       (where?'<span class="sub">'+(out?'Deliver to: ':'Collect from: ')+esc(where)+'</span>':'')+
       (b.staying?'<span class="sub">Staying: '+esc(b.staying)+'</span>':'')+
       (b.notes?'<span class="sub">Notes: '+esc(b.notes)+'</span>':'')+'</div>';
   }).join('');
-  return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">'+(out?'Deliveries today':'Returns today')+'</h2><p class="sub" style="margin:4px 0 8px">'+esc(fmtL(t))+' · '+list.length+(list.length===1?' vehicle':' vehicles')+(out?' to deliver':' to collect')+'</p>'+
-    (rows||'<p style="color:var(--muted)">Nothing '+(out?'to deliver':'to collect')+' today.</p>')+
-    '<div class="actions"><button class="btn" data-action="copy-run">Copy full run sheet</button><span class="sp"></span><button class="btn" data-action="close">Close</button></div></div>';
+  var title=late?'Overdue returns':out?'Deliveries today':'Returns today';
+  var sub=late?(list.length+(list.length===1?' car':' cars')+' past the return time and not marked returned'):(fmtL(t)+' · '+list.length+(list.length===1?' vehicle':' vehicles')+(out?' to deliver':' to collect'));
+  return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">'+title+'</h2><p class="sub" style="margin:4px 0 8px">'+esc(sub)+'</p>'+
+    (rows||'<p style="color:var(--muted)">'+(late?'No overdue returns.':'Nothing '+(out?'to deliver':'to collect')+' today.')+'</p>')+
+    '<div class="actions">'+(late?(canWrite()&&list.length>1?'<button class="btn" data-action="mark-all-returned">Mark all returned</button>':''):'<button class="btn" data-action="copy-run">Copy full run sheet</button>')+'<span class="sp"></span><button class="btn" data-action="close">Close</button></div></div>';
 }
 function drawModal(){
   var o=$('#ov');o.hidden=false;
@@ -630,7 +658,10 @@ function bookingModal(){
     (rental?'<label>Where they are staying<input id="f-staying" list="loc-list" value="'+esc(m.staying)+'" placeholder="Hotel, villa or address" autocomplete="off"></label>'+
       '<label>Pick-up location<input id="f-pickup" list="loc-list" value="'+esc(m.pickup)+'" placeholder="e.g. Grantley Adams Airport" autocomplete="off"></label>'+
       '<label>Drop-off location<input id="f-dropoff" list="loc-list" value="'+esc(m.dropoff)+'" placeholder="e.g. Hotel in St. Lawrence Gap" autocomplete="off"></label>'+locList()+
-      '<label>Total amount (USD)<input id="f-total" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.total)+'"></label>':'')+
+      '<label>Total amount (USD)<input id="f-total" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.total)+'"></label>'+
+      '<label>Amount paid so far (USD)<input id="f-paid" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.paid==null?'':m.paid)+'" placeholder="Leave blank if not tracking"></label>'+
+      '<div><button type="button" class="btn sm" data-action="paid-full">Mark fully paid</button></div>'+
+      (edit?'<label class="chk"><input type="checkbox" id="f-ret"'+(m.returned?' checked':'')+'> Car has been returned</label>':''):'')+
     '<label>Notes<textarea id="f-notes" rows="2">'+esc(m.notes)+'</textarea></label><div id="f-meta" class="meta"></div></div>'+
     '<div class="actions">'+(edit?'<button class="btn danger" data-action="del">Delete</button>':'')+'<span class="sp"></span><button class="btn" data-action="close">Cancel</button><button class="btn primary" id="f-save" data-action="save">Save</button></div></div>';
 }
@@ -649,6 +680,8 @@ function readBooking(){
   if(g('f-staying'))m.staying=g('f-staying').value;
   if(g('f-pickup'))m.pickup=g('f-pickup').value;
   if(g('f-dropoff'))m.dropoff=g('f-dropoff').value;
+  if(g('f-paid'))m.paid=g('f-paid').value===''?'':(Number(g('f-paid').value)||0);
+  if(g('f-ret'))m.returned=g('f-ret').checked;
   if(g('f-total'))m.total=g('f-total').value===''?'':(Number(g('f-total').value)||0);
   m.notes=g('f-notes').value;
 }
@@ -661,7 +694,7 @@ function bookingMeta(){
   else{
     var n=rentalDays({start:m.start,end:m.end,startTime:m.startTime,endTime:m.endTime}),c=conflicts(m.vehicleId,m.start,m.end,m.id,m.startTime,m.endTime);
     if(c.length){msg='Not available. This car is already booked: '+c.map(function(x){return (x.type==='maintenance'?'workshop':x.customer)+' ('+whenS(x.start,x.startTime)+' – '+whenS(x.end,x.endTime)+')'}).join('; ');bad=true}
-    else{msg=n+(n===1?' day':' days');if(rental&&Number(m.total)>0)msg+=' · about '+money(Number(m.total)/n)+' per day'}
+    else{msg=n+(n===1?' day':' days');if(rental&&Number(m.total)>0)msg+=' · about '+money(Number(m.total)/n)+' per day';if(rental&&Number(m.total)>0&&m.paid!==''&&m.paid!=null)msg+=' · balance '+money(Number(m.total)-Number(m.paid))}
   }
   var noName=!String(m.customer).trim();
   box.className='meta'+(bad?' bad':'');box.textContent=msg;
@@ -672,6 +705,8 @@ function saveBooking(){
   if($('#f-save').disabled)return;
   var m=S.modal.data;
   var obj={id:m.id||uid('b'),vehicleId:m.vehicleId,type:m.type,customer:m.customer.trim(),phone:(m.phone||'').trim(),start:m.start,end:m.end,startTime:m.startTime,endTime:m.endTime,staying:m.type==='rental'?(m.staying||'').trim():'',pickup:m.type==='rental'?(m.pickup||'').trim():'',dropoff:m.type==='rental'?(m.dropoff||'').trim():'',total:m.type==='rental'?(Number(m.total)||0):0,notes:m.notes.trim(),created:m.created||Date.now()};
+  if(m.type==='rental'&&m.paid!==''&&m.paid!=null)obj.paid=Number(m.paid)||0;
+  if(m.type==='rental'&&m.returned)obj.returned=true;
   if(m.example)obj.example=true;
   save('bookings',obj).then(function(ok){if(ok){closeModal();toast('Saved')}});
 }
@@ -738,6 +773,13 @@ document.addEventListener('click',function(e){
   else if(a==='nav'){S.start=addDays(S.start,Number(d.n));renderMain()}
   else if(a==='today'){S.start=today();renderMain()}
   else if(a==='cell')openBooking({vehicleId:d.v,start:d.d,end:d.d});
+  else if(a==='paid-full'){readBooking();S.modal.data.paid=Number(S.modal.data.total)||0;drawModal()}
+  else if(a==='mark-all-returned'){
+    if(el.dataset.arm!=='1'){el.dataset.arm='1';el.textContent='Tap again to mark all '+S.bookings.filter(isLate).length+' returned';return}
+    var todo=S.bookings.filter(isLate);
+    Promise.all(todo.map(function(x){return save('bookings',Object.assign({},x,{returned:true})).then(function(ok){if(ok)x.returned=true;return ok})})).then(function(r){toast(r.every(Boolean)?'All marked returned':'Some could not be saved');if(S.modal&&S.modal.kind==='today')drawModal();renderAll()});
+  }
+  else if(a==='mark-returned'){var mb=S.bookings.find(function(x){return x.id===d.id});if(mb)save('bookings',Object.assign({},mb,{returned:true})).then(function(ok){if(ok){mb.returned=true;toast('Marked returned');if(S.modal&&S.modal.kind==='today')drawModal();renderAll()}})}
   else if(a==='copy-run'){copyText(runSheetText()).then(function(ok){toast(ok?'Run sheet copied - paste it into WhatsApp':'Could not copy. Try again.')})}
   else if(a==='backup')exportBackup();
   else if(a==='today-list'){S.modal={kind:'today',data:{v:d.v}};drawModal()}
