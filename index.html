@@ -144,6 +144,8 @@ div.bar{cursor:default}
 .pill.up{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 .pill.past{background:var(--bg);color:var(--muted)}
 .c2 .pill{margin-right:6px}
+.price-note{font-size:13px;color:var(--muted);line-height:1.45}
+.price-note .btn{margin-left:6px;vertical-align:baseline}
 .lnk{display:inline-block;padding:2px 9px;margin-left:4px;border:1px solid var(--line);border-radius:99px;font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;background:var(--surface,transparent)}
 button.late-banner{display:block;width:100%;text-align:left;font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:12px}
 label.chk{display:flex;align-items:center;gap:8px;font-weight:500}
@@ -525,6 +527,63 @@ function renderBkList(){
 /* ---------- modals ---------- */
 function closeModal(){S.modal=null;var o=$('#ov');o.hidden=true;o.innerHTML=''}
 /* ---------- run sheet + backup export ---------- */
+/* ---------- rate card (daily rates in USD) ---------- */
+/* Each category: four length tiers (3-6, 7-13, 14-30, 31+ days), each [High, Mid, Low season]. */
+var RATE_CARD={
+  compact:[[75,60,55],[60,55,50],[50,40,40],[40,35,35]],
+  sedan:[[85,75,60],[70,60,50],[60,50,45],[50,40,40]],
+  jeep:[[85,75,60],[70,60,50],[60,50,45],[50,40,40]],
+  suv:[[90,80,70],[80,70,60],[70,60,50],[55,45,45]],
+  large:[[100,90,80],[85,75,65],[75,65,55],[60,50,45]],
+  pickup:[[120,110,100],[100,90,80],[80,70,60],[65,55,50]]
+};
+var TIER_NAMES=['3-6 day','7-13 day','14-30 day','31+ day'];
+var SEASON_NAMES=['high season','mid season','low season'];
+/* High: 15 Dec - 15 Apr and 25 Jul - 8 Aug. Low: 1 Sep - 31 Oct. Everything else is mid. */
+function seasonOf(d){
+  var md=d.slice(5);
+  if(md>='12-15'||md<='04-15')return 0;
+  if(md>='07-25'&&md<='08-08')return 0;
+  if(md>='09-01'&&md<='10-31')return 2;
+  return 1;
+}
+/* Bank holidays, including the weekday a holiday is observed when it falls on a Sunday. A delivery or collection on one of these days adds half a day's rate to the last charged day. */
+var HOLIDAYS={
+  '2026-01-01':"New Year's Day",'2026-01-21':'Errol Barrow Day','2026-04-03':'Good Friday','2026-04-05':'Easter Sunday','2026-04-06':'Easter Monday','2026-04-28':'National Heroes Day','2026-05-01':'Labour Day','2026-05-25':'Whit Monday','2026-08-01':'Emancipation Day','2026-08-03':'Kadooment Day','2026-11-30':'Independence Day','2026-12-25':'Christmas Day','2026-12-26':'Boxing Day',
+  '2027-01-01':"New Year's Day",'2027-01-21':'Errol Barrow Day','2027-03-26':'Good Friday','2027-03-28':'Easter Sunday','2027-03-29':'Easter Monday','2027-04-28':'National Heroes Day','2027-05-01':'Labour Day','2027-05-17':'Whit Monday','2027-08-01':'Emancipation Day','2027-08-02':'Kadooment Day','2027-08-03':'Emancipation Day (observed)','2027-11-30':'Independence Day','2027-12-25':'Christmas Day','2027-12-26':'Boxing Day','2027-12-27':'Boxing Day (observed)'
+};
+function rateKey(cat){
+  var c=String(cat||'').toLowerCase();
+  if(c.indexOf('large')>-1||c.indexOf('7')>-1)return 'large';
+  if(c.indexOf('compact')>-1)return 'compact';
+  if(c.indexOf('sedan')>-1)return 'sedan';
+  if(c.indexOf('jeep')>-1)return 'jeep';
+  if(c.indexOf('pick')>-1)return 'pickup';
+  if(c.indexOf('suv')>-1)return 'suv';
+  return null;
+}
+function priceBreakdown(b,v){
+  var key=rateKey(v&&v.category);
+  if(!key||!b.start||!b.end)return null;
+  var n=rentalDays(b),tier=n>=31?3:n>=14?2:n>=7?1:0,rates=RATE_CARD[key][tier],runs=[],sum=0,i,s,r,last;
+  for(i=0;i<n;i++){
+    s=seasonOf(addDays(b.start,i));r=rates[s];sum+=r;last=runs[runs.length-1];
+    if(last&&last.s===s)last.n++;else runs.push({s:s,r:r,n:1});
+  }
+  var lastRate=rates[seasonOf(addDays(b.start,n-1))],hd=HOLIDAYS[b.start]||'',hc=HOLIDAYS[b.end]||'',extra=(hd||hc)?lastRate*0.5:0;
+  return {n:n,tier:tier,runs:runs,sum:sum,extra:extra,lastRate:lastRate,hd:hd,hc:hc,start:b.start,end:b.end,total:Math.round((sum+extra)*100)/100};
+}
+function priceFor(m){return priceBreakdown({start:m.start,end:m.end,startTime:m.startTime,endTime:m.endTime},vById(m.vehicleId))}
+function priceText(pr){
+  var t='Rate card: '+pr.n+(pr.n===1?' day':' days')+' at the '+TIER_NAMES[pr.tier]+' rate'+(pr.n<3?' (rentals under 3 days use it too)':'')+': '+
+    pr.runs.map(function(x){return x.n+' × '+money(x.r)+' ('+SEASON_NAMES[x.s]+')'}).join(' + ');
+  if(pr.extra>0){
+    var why=[];if(pr.hd)why.push('delivery on '+fmtL(pr.start)+', '+pr.hd);if(pr.hc)why.push('collection on '+fmtL(pr.end)+', '+pr.hc);
+    t+=' + holiday charge $'+pr.extra.toFixed(2).replace(/\.00$/,'')+' (last day × 1.5; '+why.join(' and ')+')';
+  }
+  return esc(t+' = $'+String(pr.total));
+}
+
 /* ---------- phone links, payments, late returns ---------- */
 function phoneDigits(p){var d=String(p||'').replace(/\D/g,'');if(!d)return '';if(d.length===7)d='1246'+d;else if(d.length===10)d='1'+d;return d}
 function phoneLinks(p){var d=phoneDigits(p);if(!d)return esc(p||'');return esc(p)+' <a class="lnk" href="tel:+'+d+'">Call</a><a class="lnk" href="https://wa.me/'+d+'" target="_blank" rel="noopener">WhatsApp</a>'}
@@ -659,6 +718,7 @@ function bookingModal(){
       '<label>Pick-up location<input id="f-pickup" list="loc-list" value="'+esc(m.pickup)+'" placeholder="e.g. Grantley Adams Airport" autocomplete="off"></label>'+
       '<label>Drop-off location<input id="f-dropoff" list="loc-list" value="'+esc(m.dropoff)+'" placeholder="e.g. Hotel in St. Lawrence Gap" autocomplete="off"></label>'+locList()+
       '<label>Total amount (USD)<input id="f-total" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.total)+'"></label>'+
+      '<div id="f-price" class="price-note"></div>'+
       '<label>Amount paid so far (USD)<input id="f-paid" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.paid==null?'':m.paid)+'" placeholder="Leave blank if not tracking"></label>'+
       '<div><button type="button" class="btn sm" data-action="paid-full">Mark fully paid</button></div>'+
       (edit?'<label class="chk"><input type="checkbox" id="f-ret"'+(m.returned?' checked':'')+'> Car has been returned</label>':''):'')+
@@ -688,6 +748,13 @@ function readBooking(){
 function bookingMeta(){
   var m=S.modal.data,box=$('#f-meta'),btn=$('#f-save');if(!box)return;
   var msg='',bad=false,rental=m.type!=='maintenance';
+  var pb=$('#f-price');
+  if(rental&&pb){
+    var okD=m.start&&m.end&&m.startTime&&m.endTime&&m.end+'T'+m.endTime>m.start+'T'+m.startTime;
+    var pr=okD?priceFor(m):null;
+    if(pr&&!m.id&&!m.totalTouched){m.total=pr.total;var tf=$('#f-total');if(tf)tf.value=pr.total}
+    pb.innerHTML=pr?priceText(pr)+(Number(m.total)!==pr.total?' <button type="button" class="btn sm" data-action="use-rate">Use $'+pr.total+'</button>':''):(okD?'No rate card for this vehicle type.':'');
+  }
   if(!m.start||!m.end||m.end<m.start){msg='The return date must be on or after the pick-up date.';bad=true}
   else if(!m.startTime||!m.endTime){msg='Enter both times.';bad=true}
   else if(m.end+'T'+m.endTime<=m.start+'T'+m.startTime){msg='The return time must be after the pick-up time.';bad=true}
@@ -773,6 +840,7 @@ document.addEventListener('click',function(e){
   else if(a==='nav'){S.start=addDays(S.start,Number(d.n));renderMain()}
   else if(a==='today'){S.start=today();renderMain()}
   else if(a==='cell')openBooking({vehicleId:d.v,start:d.d,end:d.d});
+  else if(a==='use-rate'){readBooking();var up=priceFor(S.modal.data);if(up){S.modal.data.total=up.total;S.modal.data.totalTouched=true;drawModal()}}
   else if(a==='paid-full'){readBooking();S.modal.data.paid=Number(S.modal.data.total)||0;drawModal()}
   else if(a==='mark-all-returned'){
     if(el.dataset.arm!=='1'){el.dataset.arm='1';el.textContent='Tap again to mark all '+S.bookings.filter(isLate).length+' returned';return}
@@ -799,6 +867,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&S.modal)clo
 document.addEventListener('change',function(e){
   var id=e.target.id;
   if(e.target.closest('#ov')&&S.modal&&S.modal.kind==='booking'){
+    if(id==='f-total')S.modal.data.totalTouched=true;
     readBooking();var m=S.modal.data;
     if(id==='f-start'&&m.end<m.start){m.end=m.start;$('#f-end').value=m.end}
     bookingMeta();return;
@@ -817,6 +886,7 @@ document.addEventListener('change',function(e){
 document.addEventListener('input',function(e){
   if(e.target.id==='bk-q'){S.q=e.target.value;renderBkList();return}
   if(e.target.closest('#ov')&&S.modal&&S.modal.kind==='booking'){
+    if(e.target.id==='f-total')S.modal.data.totalTouched=true;
     readBooking();bookingMeta();
   }
 });
