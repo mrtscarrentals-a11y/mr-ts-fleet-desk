@@ -431,6 +431,8 @@ function finderHTML(){
     finderResults()+'</div>';
 }
 var moneyP=function(n){n=Number(n)||0;return '$'+n.toLocaleString('en-US',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})};
+/* No deliveries or collections are done on 25 December. */
+var noServiceDay=function(d){return !!d&&d.slice(5)==='12-25'};
 function priceCells(v,n){
   var pr=priceBreakdown({start:S.fin.start,end:S.fin.end,startTime:S.fin.startTime,endTime:S.fin.endTime},v);
   if(!pr)return '<div class="c2 sub">'+money(v.rate)+' per day</div><div class="num">'+money((v.rate||0)*n)+'</div>';
@@ -442,6 +444,7 @@ function finderResults(){
   var f=S.fin;
   if(!f.start||!f.end||!f.startTime||!f.endTime)return '<p class="bad">Enter both dates and both times.</p>';
   if(f.end+'T'+f.endTime<=f.start+'T'+f.startTime)return '<p class="bad">The return must be after the pick-up.</p>';
+  if(noServiceDay(f.start)||noServiceDay(f.end))return '<p class="bad">We do not do deliveries or collections on 25 December. The '+(noServiceDay(f.start)?'pick-up':'return')+' date falls on it, so choose another day.</p>';
   var n=rentalDays({start:f.start,end:f.end,startTime:f.startTime,endTime:f.endTime});
   var list=S.vehicles.filter(function(v){return (f.cat==='all'||v.category===f.cat)&&!conflicts(v.id,f.start,f.end,null,f.startTime,f.endTime).length}).sort(byName);
   var head='<p class="sub" style="margin:8px 0 0;color:var(--muted)">'+list.length+' of '+S.vehicles.length+' cars free from '+whenS(f.start,f.startTime)+' to '+whenS(f.end,f.endTime)+' · '+n+(n===1?' day':' days')+' · prices from the rate card</p>';
@@ -763,8 +766,10 @@ function bookingMeta(){
     if(c.length){msg='Not available. This car is already booked: '+c.map(function(x){return (x.type==='maintenance'?'workshop':x.customer)+' ('+whenS(x.start,x.startTime)+' – '+whenS(x.end,x.endTime)+')'}).join('; ');bad=true}
     else{msg=n+(n===1?' day':' days');if(rental&&Number(m.total)>0)msg+=' · about '+money(Number(m.total)/n)+' per day';if(rental&&Number(m.total)>0&&m.paid!==''&&m.paid!=null)msg+=' · balance '+money(Number(m.total)-Number(m.paid))}
   }
+  var warn=rental&&!bad&&(noServiceDay(m.start)||noServiceDay(m.end));
+  if(warn)msg='Warning: we do not do deliveries or collections on 25 December. '+msg;
   var noName=!String(m.customer).trim();
-  box.className='meta'+(bad?' bad':'');box.textContent=msg;
+  box.className='meta'+(bad||warn?' bad':'');box.textContent=msg;
   btn.disabled=bad||noName;
 }
 function saveBooking(){
