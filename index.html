@@ -279,7 +279,8 @@ var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 var fmtS=function(s){var d=parse(s);return d.getDate()+' '+MON[d.getMonth()]};
 var fmtL=function(s){var d=parse(s);return DOW[d.getDay()]+' '+d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear()};
-var money=function(n){return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0})};
+/* Rental amounts are in US dollars and are labelled USD. Monthly bills are in Barbados dollars and are labelled BBD. */
+var money=function(n){return 'USD $'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0})};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)};
 var CATS=['Compact','Sedan','Jeep','SUV','Large SUV (7-seater)','Pick up'];
 var TABS=[['calendar','Calendar'],['fleet','Fleet'],['bookings','Bookings'],['payments','Payments']];
@@ -443,14 +444,15 @@ function finderHTML(){
     '<label>Type<select id="fin-cat"><option value="all">All</option>'+cats.map(function(c){return '<option'+(c===f.cat?' selected':'')+'>'+esc(c)+'</option>'}).join('')+'</select></label></div>'+
     finderResults()+'</div>';
 }
-var moneyP=function(n){n=Number(n)||0;return '$'+n.toLocaleString('en-US',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})};
+var moneyP=function(n){n=Number(n)||0;return 'USD $'+n.toLocaleString('en-US',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})};
+var moneyN=function(n){n=Number(n)||0;return '$'+n.toLocaleString('en-US',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})};
 /* No deliveries or collections are done on 25 December. */
 var noServiceDay=function(d){return !!d&&d.slice(5)==='12-25'};
 function priceCells(v,n){
   var pr=priceBreakdown({start:S.fin.start,end:S.fin.end,startTime:S.fin.startTime,endTime:S.fin.endTime},v);
   if(!pr)return '<div class="c2 sub">'+money(v.rate)+' per day</div><div class="num">'+money((v.rate||0)*n)+'</div>';
-  var parts=pr.runs.map(function(x){return x.n+' × '+money(x.r)}).join(' + ');
-  if(pr.extra>0)parts+=' + holiday '+moneyP(pr.extra);
+  var parts=pr.runs.map(function(x){return x.n+' × '+moneyN(x.r)}).join(' + ');
+  if(pr.extra>0)parts+=' + holiday '+moneyN(pr.extra);
   return '<div class="c2 sub" title="'+priceText(pr).replace(/"/g,'&quot;')+'">'+parts+(pr.extra>0?'<br>'+esc(pr.hd&&pr.hc?'Holiday pick-up and return':pr.hd?'Holiday pick-up: '+pr.hd:'Holiday return: '+pr.hc):'')+'</div><div class="num">'+moneyP(pr.total)+'</div>';
 }
 function finderResults(){
@@ -604,9 +606,9 @@ function priceText(pr){
     pr.runs.map(function(x){return x.n+' × '+money(x.r)+' ('+SEASON_NAMES[x.s]+')'}).join(' + ');
   if(pr.extra>0){
     var why=[];if(pr.hd)why.push('delivery on '+fmtL(pr.start)+', '+pr.hd);if(pr.hc)why.push('collection on '+fmtL(pr.end)+', '+pr.hc);
-    t+=' + holiday charge $'+pr.extra.toFixed(2).replace(/\.00$/,'')+' ('+(pr.both?'first and last day':'last day')+' × 1.5; '+why.join(' and ')+')';
+    t+=' + holiday charge USD $'+pr.extra.toFixed(2).replace(/\.00$/,'')+' ('+(pr.both?'first and last day':'last day')+' × 1.5; '+why.join(' and ')+')';
   }
-  return esc(t+' = $'+String(pr.total));
+  return esc(t+' = USD $'+String(pr.total));
 }
 
 /* ---------- phone links, payments, late returns ---------- */
