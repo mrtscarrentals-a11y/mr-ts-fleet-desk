@@ -144,8 +144,6 @@ div.bar{cursor:default}
 .pill.up{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 .pill.past{background:var(--bg);color:var(--muted)}
 .c2 .pill{margin-right:6px}
-.price-note{font-size:13px;color:var(--muted);line-height:1.45}
-.price-note .btn{margin-left:6px;vertical-align:baseline}
 .lnk{display:inline-block;padding:2px 9px;margin-left:4px;border:1px solid var(--line);border-radius:99px;font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;background:var(--surface,transparent)}
 button.late-banner{display:block;width:100%;text-align:left;font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:12px}
 label.chk{display:flex;align-items:center;gap:8px;font-weight:500}
@@ -314,11 +312,13 @@ var days=function(s,e){return diff(s,e)+1};
 var fmtT=function(t){if(!t)return '';var p=t.split(':'),h=Number(p[0]);return (h%12||12)+':'+p[1]+' '+(h<12?'AM':'PM')};
 var whenS=function(d,t){return fmtS(d)+(t?', '+fmtT(t):'')};
 /* Rentals are counted in 24-hour blocks: 9:00 AM to 9:00 AM two days later is 2 days, and any part of another day counts as one more. */
+/* A return up to 3 hours after a full 24-hour block is free; after that the next day is charged. */
+var GRACE_MIN=180;
 var rentalDays=function(b){
   if(b.startTime&&b.endTime){
     var a=parse(b.start),z=parse(b.end),sp=b.startTime.split(':'),ep=b.endTime.split(':');
     a.setHours(Number(sp[0]),Number(sp[1]));z.setHours(Number(ep[0]),Number(ep[1]));
-    return Math.max(1,Math.ceil(Math.round((z-a)/60000)/1440));
+    return Math.max(1,Math.ceil((Math.round((z-a)/60000)-GRACE_MIN)/1440));
   }
   return days(b.start,b.end);
 };
@@ -430,17 +430,25 @@ function finderHTML(){
     '<label>Type<select id="fin-cat"><option value="all">All</option>'+cats.map(function(c){return '<option'+(c===f.cat?' selected':'')+'>'+esc(c)+'</option>'}).join('')+'</select></label></div>'+
     finderResults()+'</div>';
 }
+var moneyP=function(n){n=Number(n)||0;return '$'+n.toLocaleString('en-US',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})};
+function priceCells(v,n){
+  var pr=priceBreakdown({start:S.fin.start,end:S.fin.end,startTime:S.fin.startTime,endTime:S.fin.endTime},v);
+  if(!pr)return '<div class="c2 sub">'+money(v.rate)+' per day</div><div class="num">'+money((v.rate||0)*n)+'</div>';
+  var parts=pr.runs.map(function(x){return x.n+' × '+money(x.r)}).join(' + ');
+  if(pr.extra>0)parts+=' + holiday '+moneyP(pr.extra);
+  return '<div class="c2 sub" title="'+priceText(pr).replace(/"/g,'&quot;')+'">'+parts+(pr.extra>0?'<br>'+esc(pr.hd&&pr.hc?'Holiday pick-up and return':pr.hd?'Holiday pick-up: '+pr.hd:'Holiday return: '+pr.hc):'')+'</div><div class="num">'+moneyP(pr.total)+'</div>';
+}
 function finderResults(){
   var f=S.fin;
   if(!f.start||!f.end||!f.startTime||!f.endTime)return '<p class="bad">Enter both dates and both times.</p>';
   if(f.end+'T'+f.endTime<=f.start+'T'+f.startTime)return '<p class="bad">The return must be after the pick-up.</p>';
   var n=rentalDays({start:f.start,end:f.end,startTime:f.startTime,endTime:f.endTime});
   var list=S.vehicles.filter(function(v){return (f.cat==='all'||v.category===f.cat)&&!conflicts(v.id,f.start,f.end,null,f.startTime,f.endTime).length}).sort(byName);
-  var head='<p class="sub" style="margin:8px 0 0;color:var(--muted)">'+list.length+' of '+S.vehicles.length+' cars free from '+whenS(f.start,f.startTime)+' to '+whenS(f.end,f.endTime)+' · '+n+(n===1?' day':' days')+' at each car\'s daily rate</p>';
+  var head='<p class="sub" style="margin:8px 0 0;color:var(--muted)">'+list.length+' of '+S.vehicles.length+' cars free from '+whenS(f.start,f.startTime)+' to '+whenS(f.end,f.endTime)+' · '+n+(n===1?' day':' days')+' · prices from the rate card</p>';
   if(!list.length)return head;
   return head+'<div class="list">'+list.map(function(v){
     return '<div class="row"><div class="main"><strong>'+dot(v)+esc(v.name)+'</strong><span><span class="plate">'+esc(v.plate)+'</span> <span class="sub">'+esc([v.category,v.seats?v.seats+' seats':'',v.transmission].filter(Boolean).join(' · '))+'</span></span></div>'+
-      '<div class="c2 sub">'+money(v.rate)+' per day</div><div class="num">'+money((v.rate||0)*n)+'</div>'+
+      priceCells(v,n)+
       (canWrite()?'<button class="btn sm primary" data-action="book-from-finder" data-v="'+v.id+'">Book</button>':'<span></span>')+'</div>';
   }).join('')+'</div>';
 }
@@ -570,16 +578,16 @@ function priceBreakdown(b,v){
     s=seasonOf(addDays(b.start,i));r=rates[s];sum+=r;last=runs[runs.length-1];
     if(last&&last.s===s)last.n++;else runs.push({s:s,r:r,n:1});
   }
-  var lastRate=rates[seasonOf(addDays(b.start,n-1))],hd=HOLIDAYS[b.start]||'',hc=HOLIDAYS[b.end]||'',extra=(hd||hc)?lastRate*0.5:0;
-  return {n:n,tier:tier,runs:runs,sum:sum,extra:extra,lastRate:lastRate,hd:hd,hc:hc,start:b.start,end:b.end,total:Math.round((sum+extra)*100)/100};
+  var hd=HOLIDAYS[b.start]||'',hc=HOLIDAYS[b.end]||'',extra=0,both=!!(hd&&hc)&&n>1;
+  if(hd||hc){extra+=rates[seasonOf(addDays(b.start,n-1))]*0.5;if(both)extra+=rates[seasonOf(b.start)]*0.5}
+  return {n:n,tier:tier,runs:runs,sum:sum,extra:extra,both:both,hd:hd,hc:hc,start:b.start,end:b.end,total:Math.round((sum+extra)*100)/100};
 }
-function priceFor(m){return priceBreakdown({start:m.start,end:m.end,startTime:m.startTime,endTime:m.endTime},vById(m.vehicleId))}
 function priceText(pr){
   var t='Rate card: '+pr.n+(pr.n===1?' day':' days')+' at the '+TIER_NAMES[pr.tier]+' rate'+(pr.n<3?' (rentals under 3 days use it too)':'')+': '+
     pr.runs.map(function(x){return x.n+' × '+money(x.r)+' ('+SEASON_NAMES[x.s]+')'}).join(' + ');
   if(pr.extra>0){
     var why=[];if(pr.hd)why.push('delivery on '+fmtL(pr.start)+', '+pr.hd);if(pr.hc)why.push('collection on '+fmtL(pr.end)+', '+pr.hc);
-    t+=' + holiday charge $'+pr.extra.toFixed(2).replace(/\.00$/,'')+' (last day × 1.5; '+why.join(' and ')+')';
+    t+=' + holiday charge $'+pr.extra.toFixed(2).replace(/\.00$/,'')+' ('+(pr.both?'first and last day':'last day')+' × 1.5; '+why.join(' and ')+')';
   }
   return esc(t+' = $'+String(pr.total));
 }
@@ -718,7 +726,6 @@ function bookingModal(){
       '<label>Pick-up location<input id="f-pickup" list="loc-list" value="'+esc(m.pickup)+'" placeholder="e.g. Grantley Adams Airport" autocomplete="off"></label>'+
       '<label>Drop-off location<input id="f-dropoff" list="loc-list" value="'+esc(m.dropoff)+'" placeholder="e.g. Hotel in St. Lawrence Gap" autocomplete="off"></label>'+locList()+
       '<label>Total amount (USD)<input id="f-total" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.total)+'"></label>'+
-      '<div id="f-price" class="price-note"></div>'+
       '<label>Amount paid so far (USD)<input id="f-paid" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.paid==null?'':m.paid)+'" placeholder="Leave blank if not tracking"></label>'+
       '<div><button type="button" class="btn sm" data-action="paid-full">Mark fully paid</button></div>'+
       (edit?'<label class="chk"><input type="checkbox" id="f-ret"'+(m.returned?' checked':'')+'> Car has been returned</label>':''):'')+
@@ -748,13 +755,6 @@ function readBooking(){
 function bookingMeta(){
   var m=S.modal.data,box=$('#f-meta'),btn=$('#f-save');if(!box)return;
   var msg='',bad=false,rental=m.type!=='maintenance';
-  var pb=$('#f-price');
-  if(rental&&pb){
-    var okD=m.start&&m.end&&m.startTime&&m.endTime&&m.end+'T'+m.endTime>m.start+'T'+m.startTime;
-    var pr=okD?priceFor(m):null;
-    if(pr&&!m.id&&!m.totalTouched){m.total=pr.total;var tf=$('#f-total');if(tf)tf.value=pr.total}
-    pb.innerHTML=pr?priceText(pr)+(Number(m.total)!==pr.total?' <button type="button" class="btn sm" data-action="use-rate">Use $'+pr.total+'</button>':''):(okD?'No rate card for this vehicle type.':'');
-  }
   if(!m.start||!m.end||m.end<m.start){msg='The return date must be on or after the pick-up date.';bad=true}
   else if(!m.startTime||!m.endTime){msg='Enter both times.';bad=true}
   else if(m.end+'T'+m.endTime<=m.start+'T'+m.startTime){msg='The return time must be after the pick-up time.';bad=true}
@@ -840,7 +840,6 @@ document.addEventListener('click',function(e){
   else if(a==='nav'){S.start=addDays(S.start,Number(d.n));renderMain()}
   else if(a==='today'){S.start=today();renderMain()}
   else if(a==='cell')openBooking({vehicleId:d.v,start:d.d,end:d.d});
-  else if(a==='use-rate'){readBooking();var up=priceFor(S.modal.data);if(up){S.modal.data.total=up.total;S.modal.data.totalTouched=true;drawModal()}}
   else if(a==='paid-full'){readBooking();S.modal.data.paid=Number(S.modal.data.total)||0;drawModal()}
   else if(a==='mark-all-returned'){
     if(el.dataset.arm!=='1'){el.dataset.arm='1';el.textContent='Tap again to mark all '+S.bookings.filter(isLate).length+' returned';return}
@@ -867,7 +866,6 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&S.modal)clo
 document.addEventListener('change',function(e){
   var id=e.target.id;
   if(e.target.closest('#ov')&&S.modal&&S.modal.kind==='booking'){
-    if(id==='f-total')S.modal.data.totalTouched=true;
     readBooking();var m=S.modal.data;
     if(id==='f-start'&&m.end<m.start){m.end=m.start;$('#f-end').value=m.end}
     bookingMeta();return;
@@ -886,7 +884,6 @@ document.addEventListener('change',function(e){
 document.addEventListener('input',function(e){
   if(e.target.id==='bk-q'){S.q=e.target.value;renderBkList();return}
   if(e.target.closest('#ov')&&S.modal&&S.modal.kind==='booking'){
-    if(e.target.id==='f-total')S.modal.data.totalTouched=true;
     readBooking();bookingMeta();
   }
 });
