@@ -663,8 +663,8 @@ function exportRows(){
     var v=vById(b.vehicleId),m=b.type==='maintenance';
     return [v?v.name:'Removed vehicle',v?v.plate:'',m?'Workshop':'Rental',b.customer||'',b.phone||'',b.staying||'',b.pickup||'',b.dropoff||'',b.start||'',b.startTime||'',b.end||'',b.endTime||'',m?'':rentalDays(b),m?'':bTotal(b),b.paid==null?'':b.paid,b.returned?'Yes':'',b.notes||''];
   }));
-  var bills=[['Payment','Reference','Amount (USD)','Due day','Note','Tracking from']].concat(S.bills.slice().sort(function(a,b){return (a.dueDay-b.dueDay)||String(a.name).localeCompare(String(b.name))}).map(function(x){return [x.name||'',x.ref||'',x.amount==null?'Varies':x.amount,x.dueDay||'',x.note||'',x.startMonth||'']}));
-  var paid=[['Payment','Reference','For month','Paid on','Amount paid (USD)']].concat(S.billPaid.slice().sort(function(a,b){return String(b.paidOn).localeCompare(String(a.paidOn))}).map(function(x){var b=S.bills.find(function(y){return y.id===x.billId})||{};return [b.name||'Removed payment',b.ref||'',x.month||'',x.paidOn||'',x.amount==null?'':x.amount]}));
+  var bills=[['Payment','Reference','Amount (BBD)','Due day','Note','Tracking from']].concat(S.bills.slice().sort(function(a,b){return (a.dueDay-b.dueDay)||String(a.name).localeCompare(String(b.name))}).map(function(x){return [x.name||'',x.ref||'',x.amount==null?'Varies':x.amount,x.dueDay||'',x.note||'',x.startMonth||'']}));
+  var paid=[['Payment','Reference','For month','Paid on','Amount paid (BBD)']].concat(S.billPaid.slice().sort(function(a,b){return String(b.paidOn).localeCompare(String(a.paidOn))}).map(function(x){var b=S.bills.find(function(y){return y.id===x.billId})||{};return [b.name||'Removed payment',b.ref||'',x.month||'',x.paidOn||'',x.amount==null?'':x.amount]}));
   return {fleet:fleet,bookings:book,bills:bills,paid:paid};
 }
 function csvOf(rows){
@@ -929,6 +929,8 @@ function fromHash(){
 window.addEventListener('hashchange',fromHash);
 
 /* ---------- monthly payments and reminders ---------- */
+/* Bills are paid in Barbados dollars (BBD). Rentals are in US dollars (USD). */
+var moneyB=function(n){n=Number(n)||0;return 'BBD $'+n.toLocaleString('en-US',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2})};
 /* Each payment recurs monthly on its due day (the last day of the month when the month is shorter). It keeps showing as overdue every day until it is marked paid. */
 var SEED_BILLS=[
   ['Signia','3353487',1289.65,1,'H4204'],['Signia','3356129',1477.96,1,'H4573 & H5831'],['Signia','3358718',1065,1,'Zm984'],
@@ -969,7 +971,7 @@ function payBanner(){
 function payRow(i){
   var b=i.bill,t=today(),n=diff(t,i.due),late=!i.paid&&n<0;
   var when=i.paid?'Paid '+fmtS(i.paid.paidOn)+' (due '+fmtS(i.due)+')':late?'Overdue by '+(-n)+(n===-1?' day':' days')+' · was due '+fmtS(i.due):n===0?'Due today':n===1?'Due tomorrow':'Due '+fmtL(i.due)+' · in '+n+' days';
-  var amt=i.paid?(i.paid.amount==null||i.paid.amount===''?'':moneyP(i.paid.amount)):(b.amount==null||b.amount===''?'Varies':moneyP(b.amount));
+  var amt=i.paid?(i.paid.amount==null||i.paid.amount===''?'':moneyB(i.paid.amount)):(b.amount==null||b.amount===''?'Varies':moneyB(b.amount));
   return '<div class="row'+(late?' late':'')+'"><div class="main"><strong>'+esc(b.name)+'</strong><span class="sub">'+esc([b.ref,b.note].filter(Boolean).join(' · '))+'</span></div>'+
     '<div class="c2 sub">'+esc(when)+'</div><div class="num">'+amt+'</div>'+
     (canWrite()?(i.paid?'<button class="btn sm" data-action="unpay" data-key="'+esc(i.key)+'">Undo</button>':'<button class="btn sm primary" data-action="pay-bill" data-key="'+esc(i.key)+'">Mark paid</button>'):'<span></span>')+'</div>';
@@ -986,11 +988,11 @@ function paymentsHTML(){
   mine.forEach(function(i){if(i.paid)done+=Number(i.paid.amount)||0;else if(i.bill.amount==null||i.bill.amount==='')vary++;else left+=Number(i.bill.amount)||0});
   var grp=function(title,list){return list.length?'<h3 class="grp">'+title+' · '+list.length+'</h3><div class="list">'+list.map(payRow).join('')+'</div>':''};
   var all=S.bills.slice().sort(function(a,b){return (a.dueDay-b.dueDay)||String(a.name).localeCompare(String(b.name))});
-  return head+'<div class="pay-sum"><span>Still to pay this month <b>'+moneyP(left)+'</b></span><span>Paid so far <b>'+moneyP(done)+'</b></span>'+(vary?'<span>'+vary+(vary===1?' bill that varies':' bills that vary')+' not yet paid</span>':'')+'</div>'+
+  return head+'<div class="pay-sum"><span>Still to pay this month <b>'+moneyB(left)+'</b></span><span>Paid so far <b>'+moneyB(done)+'</b></span>'+(vary?'<span>'+vary+(vary===1?' bill that varies':' bills that vary')+' not yet paid</span>':'')+'</div>'+
     (unpaid.length?'':'<p style="color:var(--muted)">Nothing is waiting to be paid right now.</p>')+
     grp('Overdue',od)+grp('Due in the next 3 days',soon)+grp('Coming up',later)+grp('Recently paid',paid)+
     '<h3 class="grp">All monthly payments · '+all.length+'</h3><div class="list">'+all.map(function(b){
-      return '<div class="row"><div class="main"><strong>'+esc(b.name)+'</strong><span class="sub">'+esc([b.ref,b.note].filter(Boolean).join(' · '))+'</span></div><div class="c2 sub">Every month on the '+b.dueDay+ordSuffix(b.dueDay)+'</div><div class="num">'+(b.amount==null||b.amount===''?'Varies':moneyP(b.amount))+'</div>'+(canWrite()?'<button class="btn sm" data-action="edit-bill" data-id="'+esc(b.id)+'">Edit</button>':'<span></span>')+'</div>'}).join('')+'</div>';
+      return '<div class="row"><div class="main"><strong>'+esc(b.name)+'</strong><span class="sub">'+esc([b.ref,b.note].filter(Boolean).join(' · '))+'</span></div><div class="c2 sub">Every month on the '+b.dueDay+ordSuffix(b.dueDay)+'</div><div class="num">'+(b.amount==null||b.amount===''?'Varies':moneyB(b.amount))+'</div>'+(canWrite()?'<button class="btn sm" data-action="edit-bill" data-id="'+esc(b.id)+'">Edit</button>':'<span></span>')+'</div>'}).join('')+'</div>';
 }
 function ordSuffix(n){n=Number(n);var r=n%100;return (r>=11&&r<=13)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')}
 function loadBills(btn){
@@ -1012,7 +1014,7 @@ function billModal(){
   return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">'+(edit?'Edit payment':'Add payment')+'</h2><div class="form">'+
     '<label>Who or what it is for<input id="b-name" value="'+esc(m.name)+'" placeholder="Simpson Finance" autocomplete="off"></label>'+
     '<label>Account or reference number<input id="b-ref" value="'+esc(m.ref)+'" autocomplete="off"></label>'+
-    '<div class="grid2"><label>Amount (USD)<input id="b-amt" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.amount)+'" placeholder="Leave blank if it varies"></label>'+
+    '<div class="grid2"><label>Amount (BBD)<input id="b-amt" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.amount)+'" placeholder="Leave blank if it varies"></label>'+
     '<label>Due on day of month<input id="b-day" type="number" min="1" max="31" inputmode="numeric" value="'+esc(m.dueDay)+'"></label></div>'+
     '<label>Vehicle or note<input id="b-note" value="'+esc(m.note)+'" autocomplete="off"></label>'+
     '<label>Start reminding from<input id="b-start" type="month" value="'+esc(m.startMonth)+'"></label>'+
@@ -1035,7 +1037,7 @@ function openPay(i){
 function payModal(){
   var m=S.modal.data;
   return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">Mark paid</h2><p class="sub" style="margin:4px 0 8px">'+esc(m.name)+' · due '+esc(fmtL(m.due))+'</p><div class="form">'+
-    '<label>Amount paid (USD)<input id="p-amt" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.amount)+'" placeholder="Enter the amount"></label>'+
+    '<label>Amount paid (BBD)<input id="p-amt" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.amount)+'" placeholder="Enter the amount"></label>'+
     '<label>Paid on<input id="p-date" type="date" value="'+esc(m.paidOn)+'"></label><div id="f-meta" class="meta"></div></div>'+
     '<div class="actions"><span class="sp"></span><button class="btn" data-action="close">Cancel</button><button class="btn primary" data-action="save">Save</button></div></div>';
 }
