@@ -146,11 +146,12 @@ div.bar{cursor:default}
 .c2 .pill{margin-right:6px}
 .tab .badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:6px;border-radius:99px;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-line);font-size:11px;font-weight:700;line-height:16px;text-align:center}
 .grp{margin:22px 0 0;font:600 13px var(--f-display);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
-.row.late .c2{color:var(--warn);font-weight:600}
+.row.late .c2{color:var(--crit);font-weight:600}
 .pay-sum{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--muted);margin:2px 0 0}
 .pay-sum b{color:var(--text,inherit);font-variant-numeric:tabular-nums}
 .lnk{display:inline-block;padding:2px 9px;margin-left:4px;border:1px solid var(--line);border-radius:99px;font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;background:var(--surface,transparent)}
 button.late-banner{display:block;width:100%;text-align:left;font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+button.late-banner.red{border-color:var(--crit);background:var(--crit-soft);color:var(--crit)}
 label.chk{display:flex;align-items:center;gap:8px;font-weight:500}
 label.chk input{width:auto}
 .empty{text-align:center;padding:44px 16px;border:1px dashed var(--line);border-radius:10px;background:var(--surface)}
@@ -954,9 +955,10 @@ function billInstances(){
 }
 function payAttention(){var lim=addDays(today(),3);return billInstances().filter(function(i){return !i.paid&&i.due<=lim})}
 function payBanner(){
-  var t=today(),a=payAttention();if(!a.length)return '';
-  var od=a.filter(function(i){return i.due<t}).length;
-  return '<button class="late-banner" data-action="tab" data-v="payments">'+(od?od+(od===1?' payment overdue':' payments overdue'):'')+(od&&a.length>od?' and ':'')+(a.length>od?(a.length-od)+' due in the next 3 days':'')+' - tap to see</button>';
+  var t=today(),a=payAttention(),od=a.filter(function(i){return i.due<t}).length,soon=a.length-od,h='';
+  if(od)h+='<button class="late-banner red" data-action="tab" data-v="payments">'+od+(od===1?' payment overdue':' payments overdue')+' - tap to see</button>';
+  if(soon)h+='<button class="late-banner" data-action="tab" data-v="payments">'+soon+(soon===1?' payment due':' payments due')+' in the next 3 days - tap to see</button>';
+  return h;
 }
 function payRow(i){
   var b=i.bill,t=today(),n=diff(t,i.due),late=!i.paid&&n<0;
