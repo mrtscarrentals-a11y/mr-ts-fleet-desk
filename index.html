@@ -144,6 +144,11 @@ div.bar{cursor:default}
 .pill.up{background:var(--bg);color:var(--ink);border:1px solid var(--line)}
 .pill.past{background:var(--bg);color:var(--muted)}
 .c2 .pill{margin-right:6px}
+.tab .badge{display:inline-block;min-width:18px;padding:0 6px;margin-left:6px;border-radius:99px;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn-line);font-size:11px;font-weight:700;line-height:16px;text-align:center}
+.grp{margin:22px 0 0;font:600 13px var(--f-display);letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.row.late .c2{color:var(--warn);font-weight:600}
+.pay-sum{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--muted);margin:2px 0 0}
+.pay-sum b{color:var(--text,inherit);font-variant-numeric:tabular-nums}
 .lnk{display:inline-block;padding:2px 9px;margin-left:4px;border:1px solid var(--line);border-radius:99px;font-size:12px;font-weight:600;color:var(--accent);text-decoration:none;background:var(--surface,transparent)}
 button.late-banner{display:block;width:100%;text-align:left;font:inherit;font-weight:600;cursor:pointer;border:1px solid var(--warn-line);background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;margin-bottom:12px}
 label.chk{display:flex;align-items:center;gap:8px;font-weight:500}
@@ -270,9 +275,9 @@ var fmtL=function(s){var d=parse(s);return DOW[d.getDay()]+' '+d.getDate()+' '+M
 var money=function(n){return '$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:0})};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,6)};
 var CATS=['Compact','Sedan','Jeep','SUV','Large SUV (7-seater)','Pick up'];
-var TABS=[['calendar','Calendar'],['fleet','Fleet'],['bookings','Bookings']];
+var TABS=[['calendar','Calendar'],['fleet','Fleet'],['bookings','Bookings'],['payments','Payments']];
 
-var S={ready:false,vid:null,month:null,back:'calendar',tab:'calendar',start:today(),span:14,cat:'all',vehicles:[],bookings:[],bf:'all',q:'',
+var S={ready:false,vid:null,month:null,back:'calendar',tab:'calendar',start:today(),span:14,cat:'all',vehicles:[],bookings:[],bills:[],billPaid:[],bf:'all',q:'',
   readOnly:false,warn:'',modal:null,fin:{start:today(),startTime:'09:00',end:addDays(today(),2),endTime:'09:00',cat:'all'}};
 var db=null,gotV=false,gotB=false;
 var LS='fleetdesk.v1';
@@ -351,7 +356,7 @@ function renderAll(){
   $('#today-label').textContent=fmtL(today());
   $('#top-actions').innerHTML='<button class="btn" data-action="backup">Backup</button>'+(canWrite()?'<button class="btn primary" data-action="new-booking">New booking</button>':'');
   var late=S.bookings.filter(isLate);
-  $('#banner').innerHTML=(S.warn?'<div class="note">'+esc(S.warn)+'</div>':'')+(late.length?'<button class="late-banner" data-action="today-list" data-v="late">'+late.length+(late.length===1?' overdue return':' overdue returns')+' - tap to see</button>':'');
+  $('#banner').innerHTML=(S.warn?'<div class="note">'+esc(S.warn)+'</div>':'')+(late.length?'<button class="late-banner" data-action="today-list" data-v="late">'+late.length+(late.length===1?' overdue return':' overdue returns')+' - tap to see</button>':'')+payBanner();
   renderStats();renderTabs();renderMain();
 }
 function renderStats(){
@@ -367,11 +372,12 @@ function renderStats(){
       :'<div class="stat"><span>'+i[1]+'</span><b>'+i[0]+'</b><i>'+i[2]+'</i></div>'}).join('');
 }
 function renderTabs(){
-  $('#tabs').innerHTML=TABS.map(function(t){return '<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-action="tab" data-v="'+t[0]+'">'+t[1]+'</button>'}).join('');
+  var pn=payAttention().length;
+  $('#tabs').innerHTML=TABS.map(function(t){return '<button class="tab" role="tab" aria-selected="'+(S.tab===t[0])+'" data-action="tab" data-v="'+t[0]+'">'+t[1]+(t[0]==='payments'&&pn?'<span class="badge">'+pn+'</span>':'')+'</button>'}).join('');
 }
 function renderMain(){
   var sc=$('.tl-scroll'),left=sc?sc.scrollLeft:0;
-  var h=S.tab==='vehicle'?vehicleHTML():S.tab==='fleet'?fleetHTML():S.tab==='bookings'?bookingsHTML():calHTML();
+  var h=S.tab==='vehicle'?vehicleHTML():S.tab==='fleet'?fleetHTML():S.tab==='bookings'?bookingsHTML():S.tab==='payments'?paymentsHTML():calHTML();
   $('#main').innerHTML=h;
   if(S.tab==='bookings')renderBkList();
   var sc2=$('.tl-scroll');if(sc2)sc2.scrollLeft=left;
@@ -650,7 +656,9 @@ function exportRows(){
     var v=vById(b.vehicleId),m=b.type==='maintenance';
     return [v?v.name:'Removed vehicle',v?v.plate:'',m?'Workshop':'Rental',b.customer||'',b.phone||'',b.staying||'',b.pickup||'',b.dropoff||'',b.start||'',b.startTime||'',b.end||'',b.endTime||'',m?'':rentalDays(b),m?'':bTotal(b),b.paid==null?'':b.paid,b.returned?'Yes':'',b.notes||''];
   }));
-  return {fleet:fleet,bookings:book};
+  var bills=[['Payment','Reference','Amount (USD)','Due day','Note','Tracking from']].concat(S.bills.slice().sort(function(a,b){return (a.dueDay-b.dueDay)||String(a.name).localeCompare(String(b.name))}).map(function(x){return [x.name||'',x.ref||'',x.amount==null?'Varies':x.amount,x.dueDay||'',x.note||'',x.startMonth||'']}));
+  var paid=[['Payment','Reference','For month','Paid on','Amount paid (USD)']].concat(S.billPaid.slice().sort(function(a,b){return String(b.paidOn).localeCompare(String(a.paidOn))}).map(function(x){var b=S.bills.find(function(y){return y.id===x.billId})||{};return [b.name||'Removed payment',b.ref||'',x.month||'',x.paidOn||'',x.amount==null?'':x.amount]}));
+  return {fleet:fleet,bookings:book,bills:bills,paid:paid};
 }
 function csvOf(rows){
   return rows.map(function(r){return r.map(function(c){c=String(c==null?'':c);return /[",\n\r]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(',')}).join('\r\n');
@@ -669,6 +677,8 @@ function exportBackup(){
       w1['!cols']=[{wch:24},{wch:10},{wch:18},{wch:7},{wch:13},{wch:15},{wch:12},{wch:28}];
       w2['!cols']=[{wch:24},{wch:10},{wch:10},{wch:22},{wch:15},{wch:22},{wch:24},{wch:24},{wch:11},{wch:9},{wch:11},{wch:9},{wch:9},{wch:11},{wch:11},{wch:9},{wch:28}];
       XLSX.utils.book_append_sheet(wb,w1,'Fleet');XLSX.utils.book_append_sheet(wb,w2,'Bookings');
+      if(d.bills.length>1)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(d.bills),'Monthly payments');
+      if(d.paid.length>1)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(d.paid),'Payments made');
       var out=XLSX.write(wb,{bookType:'xlsx',type:'array'});
       saveBlob('Fleet-Desk-backup-'+stamp+'.xlsx',new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
       toast('Backup downloaded ('+S.vehicles.length+' vehicles, '+S.bookings.length+' bookings)');return;
@@ -704,7 +714,7 @@ function todayModal(){
 }
 function drawModal(){
   var o=$('#ov');o.hidden=false;
-  o.innerHTML=S.modal.kind==='today'?todayModal():S.modal.kind==='booking'?bookingModal():vehicleModal();
+  o.innerHTML=S.modal.kind==='bill'?billModal():S.modal.kind==='pay'?payModal():S.modal.kind==='today'?todayModal():S.modal.kind==='booking'?bookingModal():vehicleModal();
   if(S.modal.kind==='booking')bookingMeta();
   var f=o.querySelector('input:not([type=date]),select');if(f)f.focus();
 }
@@ -809,6 +819,12 @@ function saveVehicle(){
   save('vehicles',obj).then(function(ok){if(ok){closeModal();toast('Saved')}});
 }
 function delModal(btn){
+  if(S.modal.kind==='bill'){
+    var bm=S.modal.data;
+    if(!S.modal.confirm){S.modal.confirm=true;btn.textContent='Click again to delete this payment and its history';return}
+    Promise.all([remove('bills',bm.id)].concat(S.billPaid.filter(function(x){return x.billId===bm.id}).map(function(x){return remove('billPaid',x.id)}))).then(function(){closeModal();toast('Deleted')});
+    return;
+  }
   var m=S.modal.data,isV=S.modal.kind==='vehicle';
   if(!S.modal.confirm){
     S.modal.confirm=true;
@@ -864,7 +880,12 @@ document.addEventListener('click',function(e){
   else if(a==='edit-vehicle'){var v=vById(d.id);if(v)openVehicle(v)}
   else if(a==='bk-type'){readBooking();S.modal.data.type=d.v;drawModal()}
   else if(a==='close')closeModal();
-  else if(a==='save'){S.modal.kind==='booking'?saveBooking():saveVehicle()}
+  else if(a==='save'){var mk=S.modal.kind;if(mk==='booking')saveBooking();else if(mk==='bill')saveBill();else if(mk==='pay')savePay();else saveVehicle()}
+  else if(a==='add-bill')openBill();
+  else if(a==='edit-bill'){var eb=S.bills.find(function(x){return x.id===d.id});if(eb)openBill(eb)}
+  else if(a==='pay-bill'){var pi=billInstances().find(function(x){return x.key===d.key});if(pi)openPay(pi)}
+  else if(a==='unpay'){if(el.dataset.arm!=='1'){el.dataset.arm='1';el.textContent='Tap again to undo';return}remove('billPaid',d.key).then(function(ok){if(ok)toast('Payment marked unpaid again')})}
+  else if(a==='load-bills')loadBills(el);
   else if(a==='del')delModal(el);
   else if(a==='clear-examples')clearExamples();
 });
@@ -895,10 +916,126 @@ document.addEventListener('input',function(e){
 });
 function fromHash(){
   var h=(location.hash||'').slice(1);
-  if(h==='calendar'||h==='fleet'||h==='bookings'){S.tab=h;renderAll()}
+  if(h==='calendar'||h==='fleet'||h==='bookings'||h==='payments'){S.tab=h;renderAll()}
   else if(h.indexOf('car-')===0){S.tab='vehicle';S.vid=h.slice(4);if(!S.month)S.month=today().slice(0,8)+'01';renderAll()}
 }
 window.addEventListener('hashchange',fromHash);
+
+/* ---------- monthly payments and reminders ---------- */
+/* Each payment recurs monthly on its due day (the last day of the month when the month is shorter). It keeps showing as overdue every day until it is marked paid. */
+var SEED_BILLS=[
+  ['Signia','3353487',1289.65,1,'H4204'],['Signia','3356129',1477.96,1,'H4573 & H5831'],['Signia','3358718',1065,1,'Zm984'],
+  ['Light bill','',null,3,''],
+  ['Simpson Finance','072420',1273.75,14,'SA7796'],['Sagicor - life insurance','',325.95,14,'Macleisha'],
+  ['Woody - taxi permit lease','',500,20,'z1145'],['Water bill','',null,20,''],
+  ['Sagicor - life insurance','',322.35,21,'Tramaine'],['Flow - phone bill','',420,21,''],['Island Drive - Kicks lease','',1317.71,21,'z1145'],
+  ['Simpson Finance','070658',796.40,23,'H4042'],
+  ['Simpson Finance','070213',896.35,26,'H4267'],['Simpson Finance','072636',783.40,26,'H1224'],
+  ['Simpson Finance','071557',897.75,29,'H4148'],
+  ['Simpson Finance','072664',785.40,30,'H2702'],['Lifetime Credit Union - mortgage','',1632,30,''],
+  ['Simpson Finance','073047',732.05,31,'H4574']
+];
+var monthKey=function(d){return d.slice(0,7)};
+var addMonths=function(ym,n){var p=ym.split('-').map(Number),d=new Date(p[0],p[1]-1+n,1);return d.getFullYear()+'-'+pad(d.getMonth()+1)};
+var dueDateFor=function(b,ym){var p=ym.split('-').map(Number),last=new Date(p[0],p[1],0).getDate();return ym+'-'+pad(Math.min(Number(b.dueDay)||1,last))};
+function billInstances(){
+  var t=today(),endM=monthKey(addDays(t,7)),paidBy={},out=[];
+  S.billPaid.forEach(function(x){paidBy[x.id]=x});
+  S.bills.forEach(function(b){
+    if(b.active===false)return;
+    var m=b.startMonth||monthKey(t),g=0;
+    for(;m<=endM&&g<240;g++,m=addMonths(m,1)){
+      var key=b.id+'_'+m,due=dueDateFor(b,m);
+      if(m>monthKey(t)&&due>addDays(t,7))continue; /* next month only appears once a bill is within a week of falling due */
+      out.push({key:key,bill:b,month:m,due:due,paid:paidBy[key]||null});
+    }
+  });
+  return out;
+}
+function payAttention(){var lim=addDays(today(),3);return billInstances().filter(function(i){return !i.paid&&i.due<=lim})}
+function payBanner(){
+  var t=today(),a=payAttention();if(!a.length)return '';
+  var od=a.filter(function(i){return i.due<t}).length;
+  return '<button class="late-banner" data-action="tab" data-v="payments">'+(od?od+(od===1?' payment overdue':' payments overdue'):'')+(od&&a.length>od?' and ':'')+(a.length>od?(a.length-od)+' due in the next 3 days':'')+' - tap to see</button>';
+}
+function payRow(i){
+  var b=i.bill,t=today(),n=diff(t,i.due),late=!i.paid&&n<0;
+  var when=i.paid?'Paid '+fmtS(i.paid.paidOn)+' (due '+fmtS(i.due)+')':late?'Overdue by '+(-n)+(n===-1?' day':' days')+' · was due '+fmtS(i.due):n===0?'Due today':n===1?'Due tomorrow':'Due '+fmtL(i.due)+' · in '+n+' days';
+  var amt=i.paid?(i.paid.amount==null||i.paid.amount===''?'':moneyP(i.paid.amount)):(b.amount==null||b.amount===''?'Varies':moneyP(b.amount));
+  return '<div class="row'+(late?' late':'')+'"><div class="main"><strong>'+esc(b.name)+'</strong><span class="sub">'+esc([b.ref,b.note].filter(Boolean).join(' · '))+'</span></div>'+
+    '<div class="c2 sub">'+esc(when)+'</div><div class="num">'+amt+'</div>'+
+    (canWrite()?(i.paid?'<button class="btn sm" data-action="unpay" data-key="'+esc(i.key)+'">Undo</button>':'<button class="btn sm primary" data-action="pay-bill" data-key="'+esc(i.key)+'">Mark paid</button>'):'<span></span>')+'</div>';
+}
+function paymentsHTML(){
+  var head='<div class="bar-row"><h2 style="margin:0;flex:1">Payments</h2>'+(canWrite()?'<button class="btn sm" data-action="add-bill">Add payment</button>':'')+'</div>';
+  if(!S.bills.length)return head+'<div class="empty"><h2>No monthly payments yet</h2><p>Add the bills you pay each month. Anything not marked paid keeps showing here, and in the banner at the top, until you mark it paid.</p>'+
+    (canWrite()?'<button class="btn primary" data-action="load-bills">Load my '+SEED_BILLS.length+' monthly payments</button> <button class="btn" data-action="add-bill">Add one</button>':'')+'</div>';
+  var t=today(),cm=monthKey(t),lim=addDays(t,3),inst=billInstances(),by=function(a,b){return a.due<b.due?-1:a.due>b.due?1:String(a.bill.name).localeCompare(String(b.bill.name))};
+  var unpaid=inst.filter(function(i){return !i.paid}).sort(by);
+  var od=unpaid.filter(function(i){return i.due<t}),soon=unpaid.filter(function(i){return i.due>=t&&i.due<=lim}),later=unpaid.filter(function(i){return i.due>lim});
+  var paid=inst.filter(function(i){return i.paid&&(i.month===cm||(i.paid.paidOn||'')>=addDays(t,-14))}).sort(function(a,b){return String(b.paid.paidOn).localeCompare(String(a.paid.paidOn))});
+  var mine=inst.filter(function(i){return i.month===cm}),left=0,done=0,vary=0;
+  mine.forEach(function(i){if(i.paid)done+=Number(i.paid.amount)||0;else if(i.bill.amount==null||i.bill.amount==='')vary++;else left+=Number(i.bill.amount)||0});
+  var grp=function(title,list){return list.length?'<h3 class="grp">'+title+' · '+list.length+'</h3><div class="list">'+list.map(payRow).join('')+'</div>':''};
+  var all=S.bills.slice().sort(function(a,b){return (a.dueDay-b.dueDay)||String(a.name).localeCompare(String(b.name))});
+  return head+'<div class="pay-sum"><span>Still to pay this month <b>'+moneyP(left)+'</b></span><span>Paid so far <b>'+moneyP(done)+'</b></span>'+(vary?'<span>'+vary+(vary===1?' bill that varies':' bills that vary')+' not yet paid</span>':'')+'</div>'+
+    (unpaid.length?'':'<p style="color:var(--muted)">Nothing is waiting to be paid right now.</p>')+
+    grp('Overdue',od)+grp('Due in the next 3 days',soon)+grp('Coming up',later)+grp('Recently paid',paid)+
+    '<h3 class="grp">All monthly payments · '+all.length+'</h3><div class="list">'+all.map(function(b){
+      return '<div class="row"><div class="main"><strong>'+esc(b.name)+'</strong><span class="sub">'+esc([b.ref,b.note].filter(Boolean).join(' · '))+'</span></div><div class="c2 sub">Every month on the '+b.dueDay+ordSuffix(b.dueDay)+'</div><div class="num">'+(b.amount==null||b.amount===''?'Varies':moneyP(b.amount))+'</div>'+(canWrite()?'<button class="btn sm" data-action="edit-bill" data-id="'+esc(b.id)+'">Edit</button>':'<span></span>')+'</div>'}).join('')+'</div>';
+}
+function ordSuffix(n){n=Number(n);var r=n%100;return (r>=11&&r<=13)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')}
+function loadBills(btn){
+  if(S.bills.length||btn.disabled)return;btn.disabled=true;
+  var t=today(),cur=monthKey(t),day=Number(t.slice(8));
+  Promise.all(SEED_BILLS.map(function(x,i){
+    /* A payment already due earlier this month starts being tracked from next month; the rest from this month. */
+    return save('bills',{id:'bill-'+pad(i+1),name:x[0],ref:x[1],amount:x[2],dueDay:x[3],note:x[4],startMonth:x[3]<=day?addMonths(cur,1):cur,active:true,created:Date.now()});
+  })).then(function(r){toast(r.every(Boolean)?'Loaded '+SEED_BILLS.length+' monthly payments':'Some payments could not be saved')});
+}
+function openBill(b){
+  if(!canWrite())return;
+  S.modal={kind:'bill',data:Object.assign({name:'',ref:'',amount:'',dueDay:1,note:'',startMonth:monthKey(today())},b||{}),confirm:false};
+  if(S.modal.data.amount==null)S.modal.data.amount='';
+  drawModal();
+}
+function billModal(){
+  var m=S.modal.data,edit=!!m.id;
+  return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">'+(edit?'Edit payment':'Add payment')+'</h2><div class="form">'+
+    '<label>Who or what it is for<input id="b-name" value="'+esc(m.name)+'" placeholder="Simpson Finance" autocomplete="off"></label>'+
+    '<label>Account or reference number<input id="b-ref" value="'+esc(m.ref)+'" autocomplete="off"></label>'+
+    '<div class="grid2"><label>Amount (USD)<input id="b-amt" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.amount)+'" placeholder="Leave blank if it varies"></label>'+
+    '<label>Due on day of month<input id="b-day" type="number" min="1" max="31" inputmode="numeric" value="'+esc(m.dueDay)+'"></label></div>'+
+    '<label>Vehicle or note<input id="b-note" value="'+esc(m.note)+'" autocomplete="off"></label>'+
+    '<label>Start reminding from<input id="b-start" type="month" value="'+esc(m.startMonth)+'"></label>'+
+    '<div id="f-meta" class="meta">Months with fewer days than the due day are due on the last day of the month.</div></div>'+
+    '<div class="actions">'+(edit?'<button class="btn danger" data-action="del">Delete</button>':'')+'<span class="sp"></span><button class="btn" data-action="close">Cancel</button><button class="btn primary" data-action="save">Save</button></div></div>';
+}
+function saveBill(){
+  var g=function(id){return document.getElementById(id).value},m=S.modal.data,name=g('b-name').trim(),day=parseInt(g('b-day'),10),start=g('b-start');
+  var meta=$('#f-meta');
+  if(!name||!(day>=1&&day<=31)){meta.className='meta bad';meta.textContent='Enter a name and a due day between 1 and 31.';return}
+  if(!/^\d{4}-\d{2}$/.test(start)){meta.className='meta bad';meta.textContent='Choose the month to start reminding from.';return}
+  var amt=g('b-amt').trim();
+  var obj=Object.assign({},m,{id:m.id||uid('p'),name:name,ref:g('b-ref').trim(),amount:amt===''?null:Number(amt)||0,dueDay:day,note:g('b-note').trim(),startMonth:start,active:true,created:m.created||Date.now()});
+  save('bills',obj).then(function(ok){if(ok){closeModal();toast('Saved')}});
+}
+function openPay(i){
+  var b=i.bill;
+  S.modal={kind:'pay',data:{key:i.key,billId:b.id,month:i.month,name:b.name,due:i.due,amount:b.amount==null?'':b.amount,paidOn:today()}};drawModal();
+}
+function payModal(){
+  var m=S.modal.data;
+  return '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="mt"><h2 id="mt">Mark paid</h2><p class="sub" style="margin:4px 0 8px">'+esc(m.name)+' · due '+esc(fmtL(m.due))+'</p><div class="form">'+
+    '<label>Amount paid (USD)<input id="p-amt" type="number" min="0" step="0.01" inputmode="decimal" value="'+esc(m.amount)+'" placeholder="Enter the amount"></label>'+
+    '<label>Paid on<input id="p-date" type="date" value="'+esc(m.paidOn)+'"></label><div id="f-meta" class="meta"></div></div>'+
+    '<div class="actions"><span class="sp"></span><button class="btn" data-action="close">Cancel</button><button class="btn primary" data-action="save">Save</button></div></div>';
+}
+function savePay(){
+  var m=S.modal.data,amt=document.getElementById('p-amt').value.trim(),dt=document.getElementById('p-date').value,meta=$('#f-meta');
+  if(!dt){meta.className='meta bad';meta.textContent='Choose the date it was paid.';return}
+  save('billPaid',{id:m.key,billId:m.billId,month:m.month,paidOn:dt,amount:amt===''?null:Number(amt)||0}).then(function(ok){if(ok){closeModal();toast('Marked paid')}});
+}
 
 /* ---------- boot ---------- */
 function mapDocs(snap){return snap.docs.map(function(d){return Object.assign({id:d.id},d.data())})}
@@ -908,13 +1045,15 @@ function init(){
     document.getElementById('loginGate').hidden=!!user;
     document.getElementById('signOut').hidden=!user;
     if(window.fleetUnsub){window.fleetUnsub.forEach(function(fn){fn()});window.fleetUnsub=null}
-    S.vehicles=[];S.bookings=[];gotV=false;gotB=false;
+    S.vehicles=[];S.bookings=[];S.bills=[];S.billPaid=[];gotV=false;gotB=false;
     if(!user){db=null;S.ready=false;renderAll();return}
     db=firebase.firestore();S.ready=true;S.warn='Loading saved fleet data…';renderAll();
     var fail=function(e){S.warn='Cannot read Firebase data. Check your Firestore rules and account access.';renderAll()};
     var u1=db.collection('vehicles').onSnapshot(function(s){S.vehicles=mapDocs(s);gotV=true;if(gotB)S.warn='';renderAll()},fail);
     var u2=db.collection('bookings').onSnapshot(function(s){S.bookings=mapDocs(s);gotB=true;if(gotV)S.warn='';renderAll()},fail);
-    window.fleetUnsub=[u1,u2];
+    var u3=db.collection('bills').onSnapshot(function(s){S.bills=mapDocs(s);renderAll()},fail);
+    var u4=db.collection('billPaid').onSnapshot(function(s){S.billPaid=mapDocs(s);renderAll()},fail);
+    window.fleetUnsub=[u1,u2,u3,u4];
   });
 }
 init();
